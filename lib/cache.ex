@@ -3,6 +3,7 @@ defmodule Kdb.Cache do
   @unit_time :millisecond
   # @cleanup_interval :timer.minutes(15)
   @expiration_time :timer.minutes(10)
+  @dev Mix.env() == :dev
 
   def child_spec(_) do
     %{
@@ -32,20 +33,20 @@ defmodule Kdb.Cache do
     :ignore
   end
 
-  @spec put(atom(), binary()) :: boolean()
+  @spec put(atom() | String.t(), binary()) :: boolean()
   def put(type, id) do
     timestamp = now() + @expiration_time
     :ets.insert(@table_name, {{id, type}, timestamp})
   end
 
-  @spec retrive_by_type(atom()) :: [binary() | String.t()]
-  def retrive_by_type(type) do
-    # :ets.fun2ms(fn {{id, 1}, _readed_at} -> id end)
-    match_spec =
-      [{{{:"$1", type}, :"$2"}, [], [:"$1"]}]
+  # @spec retrive_by_type(atom()) :: [binary() | String.t()]
+  # def retrive_by_type(type) do
+  #   # :ets.fun2ms(fn {{id, 1}, _readed_at} -> id end)
+  #   match_spec =
+  #     [{{{:"$1", type}, :"$2"}, [], [:"$1"]}]
 
-    :ets.select(@table_name, match_spec)
-  end
+  #   :ets.select(@table_name, match_spec)
+  # end
 
   @spec delete(atom(), binary()) :: true
   def delete(type, id) do
@@ -59,9 +60,8 @@ defmodule Kdb.Cache do
   def cleanup(older_than) do
     n =
       :ets.foldl(
-        fn {key = {id, type}, readed_at}, acc ->
+        fn {key, readed_at}, acc ->
           if readed_at < older_than do
-            IO.puts("Removing #{inspect(id)} of type #{inspect(type)} at #{inspect(readed_at)}")
             :ets.delete(@table_name, key)
 
             acc + 1
@@ -73,8 +73,8 @@ defmodule Kdb.Cache do
         @table_name
       )
 
+    @dev and IO.puts("Deleted #{n} entries")
+
     n
   end
-
-  # cleanup(now() - @expiration_time)
 end

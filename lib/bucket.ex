@@ -68,7 +68,7 @@ defmodule Kdb.Bucket do
 
       defp put_in_memory(bucket, key, value) do
         :ets.insert(bucket.t, {key, value})
-        :rocksdb.batch_put(bucket.batch, bucket.handle, key, @encoder.(value))
+        @ttl and @cache.put(@bucket, key)
       end
 
       def get(bucket, key) do
