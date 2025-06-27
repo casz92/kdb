@@ -24,8 +24,10 @@ defmodule KdbTest do
     Bucket.put(myb, "mykey2", "myvalue")
     Bucket.put(myb, "mykey2", :pop)
     Bucket.put(myb2, "mykey2", :pop)
+    Bucket.put(myb2, "mymap", %{a: 1, b: 2, c: 3})
     assert true == Bucket.has_key?(myb, "mykey2")
-    assert Bucket.incr(myb, "mykey", 5) == 15
+    assert Bucket.incr(myb, "mykey", 7) == 17
+    assert Bucket.incr(myb, "mykey", -2) == 15
     Bucket.delete(myb, "mykey2")
     assert false == Bucket.has_key?(myb, "mykey2")
     assert Bucket.get(myb, "mykey") == 15

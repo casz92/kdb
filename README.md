@@ -72,7 +72,7 @@ end
 
 # Get the database instance
 kdb = Kdb.get(:dbname)
-# Start/Get a database and batch loaded
+# Start/Get batch
 kdb = Kdb.batch(kdb, "first batch")
 # Get the bucket instance and the batch loaded inside
 myb = Kdb.get_bucket(kdb, :my_bucket)
@@ -80,11 +80,14 @@ myb = Kdb.get_bucket(kdb, :my_bucket)
 # Write data (batch is necessary for transactional operations)
 MyBucket.put(myb, "key", "value")
 MyBucket.put(myb, "mykey", 10)
+MyBucket.put(myb, "mymap", %{a: 1, b: 2, c: 3})
+MyBucket.put(myb, "mytuple", {3, 2, 1, :go})
 MyBucket.incr(myb, "mykey", 12)
+MyBucket.incr(myb, "mykey", -2)
 
 # Read data
 {:ok, "value"} = MyBucket.fetch(myb, "key")
-myb["mykey"] == 22
+myb["mykey"] == 20
 "value" == MyBucket.get(myb, "key")
 
 # Delete data
