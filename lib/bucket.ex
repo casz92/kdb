@@ -1,5 +1,5 @@
 defmodule Kdb.Bucket do
-  defstruct [:db, :name, :dbname, :handle, :t, :batch, :module]
+  defstruct [:db, :name, :dbname, :handle, :t, :batch, :module, :ttl]
 
   @type t :: %__MODULE__{
           db: reference(),
@@ -8,7 +8,8 @@ defmodule Kdb.Bucket do
           handle: reference() | nil,
           t: :ets.tid() | nil,
           batch: reference() | nil,
-          module: module()
+          module: module(),
+          ttl: boolean()
         }
 
   defmacro __using__(opts) do
@@ -31,23 +32,28 @@ defmodule Kdb.Bucket do
       @decoder decoder
       @encoder encoder
 
-      def new(dbname, db, handle) do
-        t =
-          :ets.new(__MODULE__, [
-            :set,
-            :public,
-            read_concurrency: true,
-            write_concurrency: true
-          ])
+      @compile {:inline,
+                put: 3, get: 2, has_key?: 2, delete: 2, incr: 3, batch: 2, decoder: 1, encoder: 1}
 
+      def new(dbname, db, handle) do
         %Kdb.Bucket{
           dbname: dbname,
           db: db,
           name: @bucket,
           handle: handle,
-          t: t,
-          module: __MODULE__
+          t: new_table(),
+          module: __MODULE__,
+          ttl: @ttl
         }
+      end
+
+      def new_table do
+        :ets.new(__MODULE__, [
+          :set,
+          :public,
+          read_concurrency: true,
+          write_concurrency: true
+        ])
       end
 
       def name, do: @bucket
@@ -60,15 +66,15 @@ defmodule Kdb.Bucket do
         %{bucket | batch: batch}
       end
 
-      def put(bucket, key, value) do
-        :ets.insert(bucket.t, {key, value})
-        :rocksdb.batch_put(bucket.batch, bucket.handle, key, @encoder.(value))
-        @ttl and @cache.put(@bucket, key)
+      def put(%Kdb.Bucket{batch: batch, handle: handle, t: t, ttl: ttl}, key, value) do
+        :ets.insert(t, {key, value})
+        :rocksdb.batch_put(batch, handle, key, @encoder.(value))
+        ttl and @cache.put(@bucket, key)
       end
 
-      defp put_in_memory(bucket, key, value) do
-        :ets.insert(bucket.t, {key, value})
-        @ttl and @cache.put(@bucket, key)
+      defp put_in_memory(%Kdb.Bucket{t: t, ttl: ttl}, key, value) do
+        :ets.insert(t, {key, value})
+        ttl and @cache.put(@bucket, key)
       end
 
       def get(bucket, key) do

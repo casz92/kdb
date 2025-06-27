@@ -179,10 +179,17 @@ defmodule Kdb do
   end
 
   @spec transaction(bucket :: Kdb.t(), fun :: (Kdb.t() -> any())) :: :ok | {:error, any()}
-  def transaction(%Kdb{db: db} = kdb, fun) do
+  def transaction(%Kdb{db: db, buckets: buckets} = kdb, fun) do
     {:ok, batch} = :rocksdb.batch()
 
-    kdb = put_batch(kdb, batch)
+    kdb = %{
+      kdb
+      | batch: batch,
+        buckets:
+          Map.new(buckets, fn {name, bucket = %{module: module}} ->
+            {name, %{bucket | batch: batch, t: module.new_table(), ttl: false}}
+          end)
+    }
 
     result =
       try do
@@ -192,6 +199,11 @@ defmodule Kdb do
         _exit, reason ->
           {:error, reason}
       end
+
+    # delete ets tables
+    for {_, bucket} <- kdb.buckets do
+      :ets.delete(bucket.t)
+    end
 
     :rocksdb.release_batch(batch)
 

@@ -93,14 +93,25 @@ myb["mykey"] == 20
 # Delete data
 :ok = MyBucket.delete(myb, "key")
 
+# Commit changes from first batch
+:ok = Kdb.commit(kdb, "first batch")
+
+# Transactional operations (memory isolation)
+Kdb.transaction(kdb, fn kdb ->
+  myb = Kdb.get_bucket(kdb, :my_bucket)
+  Bucket.put(myb, "jess", 700)
+  Bucket.incr(myb, "carlos", 1000)
+  Bucket.put(myb, "jim", 950)
+  Bucket.put(myb, "caroline", 100)
+  Bucket.put(myb, "jony", 500)
+end)
+
 # List data
 myb |> Enum.to_list() |> IO.inspect()
 
 # Stream data
 myb |> Kdb.Stream.stream() |> Enum.to_list() |> IO.inspect()
 
-# Commit changes from first batch
-:ok = Kdb.commit(kdb, "first batch")
 
 # Close the database
 :ok = Kdb.close(kdb)

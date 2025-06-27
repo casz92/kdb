@@ -35,6 +35,15 @@ defmodule KdbTest do
     assert myb2["mykey"] == nil
     assert :ok == Kdb.commit(kdb, "first batch")
 
+    Kdb.transaction(kdb, fn kdb ->
+      myb = Kdb.get_bucket(kdb, :bucket)
+      Bucket.put(myb, "jess", 700)
+      Bucket.incr(myb, "carlos", 1000)
+      Bucket.put(myb, "jim", 950)
+      Bucket.put(myb, "caroline", 100)
+      Bucket.put(myb, "jony", 500)
+    end)
+
     myb |> Enum.to_list() |> IO.inspect()
     myb2 |> Kdb.Stream.stream() |> Enum.to_list() |> IO.inspect()
     defult |> Enum.to_list() |> IO.inspect()
