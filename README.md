@@ -72,7 +72,7 @@ end
 
 # Get the database instance
 kdb = Kdb.get(:dbname)
-# Start a batch
+# Start/Get a database and batch loaded
 kdb = Kdb.batch(kdb, "first batch")
 # Get the bucket instance and the batch loaded inside
 myb = Kdb.get_bucket(kdb, :my_bucket)
@@ -130,7 +130,7 @@ end
 
 ## Testing
 ```bash
-mix test test/crud_test.exs
+mix test test/kdb_test.exs
 ```
 
 ## License
