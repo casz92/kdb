@@ -211,6 +211,29 @@ defmodule Kdb do
     result
   end
 
+  def begin_transaction(kdb = %Kdb{buckets: buckets}) do
+    {:ok, batch} = :rocksdb.batch()
+
+    %{
+      kdb
+      | batch: batch,
+        buckets:
+          Map.new(buckets, fn {name, bucket = %{module: module}} ->
+            {name, %{bucket | batch: batch, t: module.new_table(), cachable: false}}
+          end)
+    }
+  end
+
+  def commit_transaction(kdb = %Kdb{db: db, batch: batch}) do
+    :rocksdb.write_batch(db, batch, [])
+    # delete ets tables
+    for {_, bucket} <- kdb.buckets do
+      :ets.delete(bucket.t)
+    end
+
+    :rocksdb.release_batch(batch)
+  end
+
   def key_merge(keys) do
     Enum.join(keys, ":")
   end
