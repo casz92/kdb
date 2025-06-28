@@ -34,8 +34,7 @@ defmodule Kdb.MixProject do
   defp deps do
     [
       {:rocksdb, "~> 1.9"},
-      # {:poolder, "~> 0.1.10"},
-      {:poolder, path: "../poolder"},
+      {:poolder, "~> 0.1.11"},
       {:ex_doc, "~> 0.29.4", only: :dev, runtime: false}
     ]
   end
