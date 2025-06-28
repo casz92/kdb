@@ -1,9 +1,6 @@
 defmodule Kdb.Cache do
   @table_name __MODULE__
   @unit_time :millisecond
-  # @cleanup_interval :timer.minutes(15)
-  @expiration_time :timer.minutes(10)
-  @dev Mix.env() == :dev
 
   def child_spec(_) do
     %{
@@ -33,48 +30,47 @@ defmodule Kdb.Cache do
     :ignore
   end
 
-  @spec put(atom() | String.t(), binary()) :: boolean()
-  def put(type, id) do
-    timestamp = now() + @expiration_time
-    :ets.insert(@table_name, {{id, type}, timestamp})
+  @spec put(database :: atom(), bucket_name :: atom(), key :: binary(), ttl :: integer()) ::
+          boolean()
+  def put(dbname, bucket, id, ttl) do
+    timestamp = now() + ttl
+    :ets.insert(@table_name, {{id, bucket, dbname}, timestamp})
   end
 
-  # @spec retrive_by_type(atom()) :: [binary() | String.t()]
-  # def retrive_by_type(type) do
-  #   # :ets.fun2ms(fn {{id, 1}, _readed_at} -> id end)
-  #   match_spec =
-  #     [{{{:"$1", type}, :"$2"}, [], [:"$1"]}]
-
-  #   :ets.select(@table_name, match_spec)
-  # end
-
-  @spec delete(atom(), binary()) :: true
-  def delete(type, id) do
-    :ets.delete(@table_name, {id, type})
+  @spec delete(atom(), atom(), binary()) :: true
+  def delete(dbname, bucket, id) do
+    :ets.delete(@table_name, {id, bucket, dbname})
   end
 
   defp now do
     :os.system_time(@unit_time)
   end
 
+  @spec cleanup(older_than :: integer()) :: integer()
   def cleanup(older_than) do
     n =
       :ets.foldl(
-        fn {key, readed_at}, acc ->
-          if readed_at < older_than do
+        fn
+          {key = {id, bucket_name, dbname}, readed_at}, acc when readed_at < older_than ->
+            kdb = Kdb.get(dbname)
+            tid = Map.get(kdb.buckets, bucket_name).t
+            :ets.delete(tid, id)
             :ets.delete(@table_name, key)
-
             acc + 1
-          else
+
+          _, acc ->
             acc
-          end
         end,
         0,
         @table_name
       )
 
-    @dev and IO.puts("Deleted #{n} entries")
-
     n
   end
+
+  @callback init() :: :ignore
+  @callback put(database :: atom(), bucket :: atom(), id :: binary(), ttl :: integer()) ::
+              boolean()
+  @callback delete(database :: atom(), bucket :: atom(), id :: binary()) :: any()
+  @callback cleanup(older_than :: integer()) :: integer()
 end

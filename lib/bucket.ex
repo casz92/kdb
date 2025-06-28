@@ -1,5 +1,5 @@
 defmodule Kdb.Bucket do
-  defstruct [:db, :name, :dbname, :handle, :t, :batch, :module, :ttl]
+  defstruct [:db, :name, :dbname, :handle, :t, :batch, :module, :ttl, :cachable]
 
   @type t :: %__MODULE__{
           db: reference(),
@@ -9,13 +9,14 @@ defmodule Kdb.Bucket do
           t: :ets.tid() | nil,
           batch: reference() | nil,
           module: module(),
-          ttl: boolean()
+          ttl: integer(),
+          cachable: boolean()
         }
 
   defmacro __using__(opts) do
     bucket = Keyword.get(opts, :name) || raise ArgumentError, "missing :name option"
     cache = Keyword.get(opts, :cache, Kdb.Cache)
-    ttl = Keyword.get(opts, :ttl, true)
+    ttl = Keyword.get(opts, :ttl, 300_000)
     decoder = Keyword.get(opts, :decoder, &Kdb.binary_to_term/1)
     encoder = Keyword.get(opts, :encoder, &Kdb.term_to_binary/1)
 
@@ -26,11 +27,12 @@ defmodule Kdb.Bucket do
             decoder: decoder,
             encoder: encoder
           ] do
-      @bucket bucket
+      @bucket bucket |> Kdb.Util.to_bucket_name()
       @cache cache
       @ttl ttl
       @decoder decoder
       @encoder encoder
+      @cacheable is_integer(ttl)
 
       @compile {:inline,
                 put: 3, get: 2, has_key?: 2, delete: 2, incr: 3, batch: 2, decoder: 1, encoder: 1}
@@ -43,7 +45,8 @@ defmodule Kdb.Bucket do
           handle: handle,
           t: new_table(),
           module: __MODULE__,
-          ttl: @ttl
+          ttl: @ttl,
+          cachable: @cacheable
         }
       end
 
@@ -66,15 +69,31 @@ defmodule Kdb.Bucket do
         %{bucket | batch: batch}
       end
 
-      def put(%Kdb.Bucket{batch: batch, handle: handle, t: t, ttl: ttl}, key, value) do
+      def put(
+            %Kdb.Bucket{
+              name: name,
+              dbname: dbname,
+              batch: batch,
+              handle: handle,
+              t: t,
+              ttl: ttl,
+              cachable: cachable
+            },
+            key,
+            value
+          ) do
         :ets.insert(t, {key, value})
         :rocksdb.batch_put(batch, handle, key, @encoder.(value))
-        ttl and @cache.put(@bucket, key)
+        cachable and @cache.put(dbname, name, key, ttl)
       end
 
-      defp put_in_memory(%Kdb.Bucket{t: t, ttl: ttl}, key, value) do
+      defp put_in_memory(
+             %Kdb.Bucket{name: name, dbname: dbname, t: t, ttl: ttl, cachable: cachable},
+             key,
+             value
+           ) do
         :ets.insert(t, {key, value})
-        ttl and @cache.put(@bucket, key)
+        cachable and @cache.put(dbname, name, key, ttl)
       end
 
       def get(bucket, key) do
@@ -112,17 +131,28 @@ defmodule Kdb.Bucket do
         end
       end
 
-      def incr(bucket, key, amount) when is_integer(amount) do
+      def incr(bucket = %Kdb.Bucket{batch: batch, handle: handle, t: t}, key, amount)
+          when is_integer(amount) do
         result = get(bucket, key) || 0
-        result = :ets.update_counter(bucket.t, key, {2, amount}, {key, result})
-        :rocksdb.batch_put(bucket.batch, bucket.handle, key, @encoder.(result))
+        result = :ets.update_counter(t, key, {2, amount}, {key, result})
+        :rocksdb.batch_put(batch, handle, key, @encoder.(result))
         result
       end
 
-      def delete(bucket, key) do
-        :ets.delete(bucket.t, key)
-        :rocksdb.batch_delete(bucket.batch, bucket.handle, key)
-        @ttl and @cache.delete(@bucket, key)
+      def delete(
+            %Kdb.Bucket{
+              name: name,
+              dbname: dbname,
+              batch: batch,
+              handle: handle,
+              t: t,
+              cachable: cachable
+            },
+            key
+          ) do
+        :ets.delete(t, key)
+        :rocksdb.batch_delete(batch, handle, key)
+        cachable and @cache.delete(dbname, name, key)
       end
     end
   end

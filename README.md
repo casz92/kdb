@@ -35,15 +35,14 @@ end
 - [✅] Get & put
 - [✅] Fetch & Access
 - [✅] Batching
-- [❌] TTL (No tested yet)
+- [✅] TTL
 - [❌] Count keys
 - [✅] Encoding/Decoding
-- [✅] Streaming
-- [✅] List
+- [✅] Enumerable & Stream
 - [✅] Increment
 - [✅] Decrement
 - [✅] Delete
-- [✅] Commit
+- [✅] Transactions
 - [✅] Close
 - [❌] Backup & Restore
 - [✍️] Testing
@@ -58,10 +57,10 @@ end
 # Create a bucket
 defmodule MyBucket do
   use Kdb.Bucket, 
-  # atom or module, default module name
+  # Use atom, default current module last name (it is transformed to atom)
   name: :my_bucket,
-  # default is true
-  ttl: true,
+  # default is 5 minutes (300_000)
+  ttl: 30_000,
   # default values
   decoder: &Kdb.binary_to_term/1,
   encoder: &Kdb.term_to_binary/1
@@ -98,7 +97,7 @@ myb["mykey"] == 20
 
 # Transactional operations (memory isolation)
 Kdb.transaction(kdb, fn kdb ->
-  myb = Kdb.get_bucket(kdb, :my_bucket)
+  myb = kdb.buckets.my_bucket
   Bucket.put(myb, "jess", 700)
   Bucket.incr(myb, "carlos", 1000)
   Bucket.put(myb, "jim", 950)
@@ -111,7 +110,6 @@ myb |> Enum.to_list() |> IO.inspect()
 
 # Stream data
 myb |> Kdb.Stream.stream() |> Enum.to_list() |> IO.inspect()
-
 
 # Close the database
 :ok = Kdb.close(kdb)

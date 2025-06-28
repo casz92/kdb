@@ -43,25 +43,6 @@ defmodule Kdb do
 
   def start_link(opts) do
     Kdb.Supervisor.start_link(opts)
-    # dbname = Keyword.get(opts, :name) || raise(ArgumentError, "`name` is required")
-    # new(dbname, opts)
-
-    # children = [
-    #   Kdb.Registry,
-    #   Kdb.Cache,
-    #   {Kdb.Scheduler, [name: dbname]}
-    # ]
-
-    # case Supervisor.init(children, strategy: :one_for_one) do
-    #   {:ok, pid} ->
-    #     {:ok, pid}
-
-    #   {:error, {:already_started, pid}} ->
-    #     {:ok, pid}
-
-    #   err ->
-    #     err
-    # end
   end
 
   @doc """
@@ -152,6 +133,26 @@ defmodule Kdb do
     Map.get(buckets, name)
   end
 
+  def lookup_bucket(dbname, name) do
+    Kdb.Registry.lookup({dbname, name})
+  end
+
+  def create_bucket(kdb = %Kdb{db: db, buckets: buckets}, mod) do
+    name = mod.name()
+    {:ok, handle} = :rocksdb.create_column_family(db, to_charlist(name), [])
+    bucket = mod.new(kdb.name, db, handle)
+    new_kdb = %{kdb | buckets: Map.put(buckets, name, bucket)}
+    Kdb.Registry.register(name, new_kdb)
+    new_kdb
+  end
+
+  def drop_bucket(kdb = %Kdb{db: db, name: dbname, buckets: buckets}, name) do
+    handle = Map.get(buckets, name)
+    :rocksdb.drop_column_family(db, handle)
+    Kdb.Registry.unregister({dbname, name})
+    %{kdb | buckets: Map.delete(buckets, name)}
+  end
+
   def new_batch(kdb) do
     {:ok, batch} = :rocksdb.batch()
     %{kdb | batch: batch}
@@ -187,7 +188,7 @@ defmodule Kdb do
       | batch: batch,
         buckets:
           Map.new(buckets, fn {name, bucket = %{module: module}} ->
-            {name, %{bucket | batch: batch, t: module.new_table(), ttl: false}}
+            {name, %{bucket | batch: batch, t: module.new_table(), cachable: false}}
           end)
     }
 
@@ -604,11 +605,11 @@ defmodule Kdb do
           :rocksdb.release_batch(batch)
         end
 
+        Kdb.Registry.unregister(key)
+
       _ ->
         nil
     end
-
-    Kdb.Registry.unregister(key)
 
     :ok
   end
@@ -639,6 +640,30 @@ defmodule Kdb do
   def release_snapshot(snapshot) when is_reference(snapshot) do
     :rocksdb.release_snapshot(snapshot)
   end
+
+  def release_batch(%{batch: batch}) when is_reference(batch) do
+    :rocksdb.release_batch(batch)
+  end
+
+  def release_batch(name) when is_binary(name) or is_atom(name) do
+    key = {:batch, name}
+
+    case Kdb.Registry.lookup(key) do
+      {:ok, batch} ->
+        if is_reference(batch) do
+          :rocksdb.release_batch(batch)
+        end
+
+        Kdb.Registry.unregister(key)
+
+      _ ->
+        nil
+    end
+
+    :ok
+  end
+
+  def release_batch(_batch), do: :ok
 
   @spec restore(charlist(), charlist()) :: :ok | {:error, term()}
   def restore(target, output) do

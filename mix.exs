@@ -7,7 +7,8 @@ defmodule Kdb.MixProject do
     [
       app: :kdb,
       name: "Kdb",
-      description: "High-performance caching layer using ETS with TTL over RocksDB for persistent, write-intensive, low-latency applications",
+      description:
+        "High-performance caching layer using ETS with TTL over RocksDB for persistent, write-intensive, low-latency applications",
       version: @version,
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
@@ -33,7 +34,8 @@ defmodule Kdb.MixProject do
   defp deps do
     [
       {:rocksdb, "~> 1.9"},
-      {:poolder, "~> 0.1.10"},
+      # {:poolder, "~> 0.1.10"},
+      {:poolder, path: "../poolder"},
       {:ex_doc, "~> 0.29.4", only: :dev, runtime: false}
     ]
   end
