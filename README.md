@@ -15,7 +15,9 @@ By leveraging ETS for ultra-low-latency access and utilizing RocksDB for durable
 
 >Tested exclusively on Linux x86_64 systems (Ubuntu 22.04.3 LTS)
 
->Note: This library is under active development and evolving rapidly, with the goal of reaching a stable release at version v0.2.0. Contributions, testing, and feedback are welcome as the project matures toward production readiness
+> Note: This library is under active development and evolving rapidly, with the goal of reaching a stable release at version v0.2.0. Contributions, testing, and feedback are welcome as the project matures toward production readiness
+
+> ⚠️ **Build requirement**: Compiling RocksDB requires **CMake version 3.4 or higher**. Please ensure it is installed and available in your system path.
 
 
 ## Installation
@@ -29,6 +31,8 @@ def deps do
   ]
 end
 ```
+
+> Note: `cmake>=3.4` is required to compile RocksDB from source.
 
 ## Roadmap
 - [✅] Start
