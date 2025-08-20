@@ -49,8 +49,8 @@ end
 - [✅] Delete
 - [✅] Transactions
 - [✅] Close
-- [❌] Backup & Restore
-- [✍️] Testing
+- [✅] Backup & Restore
+- [✅] Testing
 - [✅] Indexing (Unique & Secondary)
 - [❌] Sharding
 - [❌] Replication
@@ -160,7 +160,15 @@ end
 
 ## Testing
 ```bash
-mix test test/kdb_test.exs
+mix test test/ttl_test.exs
+mix test test/batch_test.exs
+mix test test/tx_test.exs
+mix test test/incr_test.exs
+mix test test/index_test.exs
+mix test test/backup_test.exs
+mix test test/restore_test.exs
+mix test test/inspect_test.exs
+mix test test/destroy_test.exs
 ```
 
 ## License

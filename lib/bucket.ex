@@ -429,6 +429,14 @@ defmodule Kdb.Bucket do
     end
   end
 
+  def put_batch(bucket, batch) when is_atom(batch) or is_reference(batch) do
+    %{bucket | batch: Kdb.Batch.new(name: batch, db: Kdb.get(bucket.dbname))}
+  end
+
+  def put_batch(bucket, batch) do
+    %{bucket | batch: batch}
+  end
+
   @doc """
   Creates a new bucket module with the given name and options.
   The module will use `Kdb.Bucket` and the options provided.

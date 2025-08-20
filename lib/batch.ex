@@ -57,15 +57,15 @@ defmodule Kdb.Batch do
     end
   end
 
-  def commit(%__MODULE__{indexer: indexer, store: store, tasker: _tasker}) do
+  def commit(%__MODULE__{indexer: indexer, store: store, tasker: tasker}) do
     :ok = Kdb.Store.Batch.commit(store)
 
-    # [
-    #   Poolder.Tasker.callback(tasker, fn ->
-    :ok = Kdb.Indexer.Batch.commit(indexer)
-    #   end)
-    # ]
-    # |> Poolder.Tasker.await(:infinity)
+    [
+      Poolder.Tasker.callback(tasker, fn ->
+        Kdb.Indexer.Batch.commit(indexer)
+      end)
+    ]
+    |> Poolder.Tasker.await(:infinity)
 
     :ok
   end

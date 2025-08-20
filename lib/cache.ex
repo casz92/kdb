@@ -136,9 +136,7 @@ defmodule Kdb.Cache do
   end
 
   @spec cleanup(batch :: any(), older_than :: integer()) :: integer()
-  def cleanup(%Kdb.Batch{} = batch, older_than) do
-    tid = batch.cache.t
-
+  def cleanup(%Kdb.Cache{t: tid}, older_than) do
     n =
       :ets.foldl(
         fn

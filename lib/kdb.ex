@@ -173,7 +173,7 @@ defmodule Kdb do
 
     try do
       close(kdb)
-      File.rm_rf!(folder)
+      {:ok, _} = File.rm_rf(folder)
       :ok
     rescue
       e ->
@@ -182,44 +182,82 @@ defmodule Kdb do
   end
 
   @spec backup(t(), Path.t()) :: :ok | {:error, term()}
-  def backup(%Kdb{store: db}, target) do
-    target = to_charlist(target)
-    {:ok, ref} = :rocksdb.open_backup_engine(target)
+  def backup(%Kdb{store: db, indexer: conn}, target) do
+    cond do
+      File.exists?(target) ->
+        {:error, :target_exists}
 
-    try do
-      :ok = :rocksdb.create_new_backup(ref, db)
-    rescue
-      e ->
-        IO.inspect(e, label: "Backup error")
-        {:error, e}
-    after
-      :rocksdb.close_backup_engine(ref)
+      true ->
+        # Create target directory
+        target = to_charlist(target)
+        File.mkdir_p(target)
+        File.mkdir(target)
+        data_folder = Path.join(target, "backup_data") |> to_charlist()
+        indexer_folder = Path.join(target, "indexer.db") |> to_charlist()
+
+        # Create a backup of the indexer
+        :ok = Kdb.Indexer.backup(conn, indexer_folder)
+        # Create a backup of the database
+        {:ok, ref} = :rocksdb.open_backup_engine(data_folder)
+
+        try do
+          :ok = :rocksdb.create_new_backup(ref, db)
+          zip_file = [target, ".zip"] |> Enum.join("") |> to_charlist()
+          ZipUtil.compress_folder(target, zip_file)
+          {:ok, _} = File.rm_rf(target)
+          :rocksdb.close_backup_engine(ref)
+        rescue
+          e ->
+            IO.inspect(e, label: "Backup error")
+            :rocksdb.close_backup_engine(ref)
+            {:error, e}
+        end
     end
   end
 
-  @spec restore(charlist(), Path.t()) :: :ok | {:error, term()}
-  def restore(source, folder_destiny) do
-    folder_destiny = to_charlist(folder_destiny)
-    {:ok, ref} = :rocksdb.open_backup_engine(source)
-    :ok = File.mkdir_p(folder_destiny)
-    :ok = File.mkdir(folder_destiny)
+  @spec restore(Path.t(), Path.t()) :: :ok | {:error, term()}
+  def restore(source_file, folder_destiny) do
+    cond do
+      File.exists?(folder_destiny) ->
+        {:error, :folder_destiny_exists}
 
-    try do
-      {:ok, backups} = :rocksdb.get_backup_info(ref)
+      not File.exists?(source_file) ->
+        {:error, :source_file_not_found}
 
-      if backups == [] do
-        {:error, :no_backups}
-      else
-        backup = List.first(backups)
-        :ok = :rocksdb.restore_db_from_backup(ref, backup.id, folder_destiny)
-        :ok
-      end
-    rescue
-      e ->
-        IO.inspect(e, label: "Restore error")
-        {:error, e}
-    after
-      :rocksdb.close_backup_engine(ref)
+      true ->
+        source_file = to_charlist(source_file)
+        folder_destiny = to_charlist(folder_destiny)
+        source_folder = Path.rootname(source_file) |> to_charlist()
+        File.mkdir_p(folder_destiny)
+
+        case ZipUtil.extract(source_file, ~c"") do
+          {:ok, _} ->
+            data_folder_temp = Path.join(source_folder, "backup_data") |> to_charlist()
+            data_folder_destiny = Path.join(source_folder, "data") |> to_charlist()
+            {:ok, ref} = :rocksdb.open_backup_engine(data_folder_temp)
+
+            try do
+              {:ok, backups} = :rocksdb.get_backup_info(ref)
+
+              if backups == [] do
+                {:error, :no_backups}
+              else
+                backup = List.first(backups)
+                :ok = :rocksdb.restore_db_from_backup(ref, backup.backup_id, data_folder_destiny)
+                File.rm_rf(data_folder_temp)
+                :ok = File.rename(source_folder, folder_destiny)
+              end
+            rescue
+              e ->
+                IO.inspect(e, label: "Restore error")
+                {:error, e}
+            after
+              :rocksdb.close_backup_engine(ref)
+            end
+
+          {:error, reason} ->
+            {:error, reason}
+        end
     end
   end
 end
