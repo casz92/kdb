@@ -72,36 +72,6 @@ defmodule Kdb.Indexer do
     end
   end
 
-  # def create_unique(conn, cf, field, key, value) do
-  #   sql = "INSERT OR REPLACE INTO unique_indexes (cf, field, key, value) VALUES (?, ?, ?, ?)"
-  #   execute(conn, sql, [cf, field, key, value])
-  # end
-
-  # def exists_unique?(conn, cf, field, value) do
-  #   sql = "SELECT value FROM unique_indexes WHERE cf = ? AND field = ? AND value = ?"
-  #   exists?(conn, sql, [cf, field, value])
-  # end
-
-  # def find_unique(conn, cf, field, value, opts \\ []) do
-  #   offset = Keyword.get(opts, :offset, 0)
-  #   limit = Keyword.get(opts, :limit, 100)
-
-  #   sql =
-  #     "SELECT key FROM unique_indexes WHERE cf = ? AND field = ? AND value LIKE ? COLLATE NOCASE OFFSET ? LIMIT ?"
-
-  #   Stream.query(conn, sql, [cf, field, value, offset, limit])
-  # end
-
-  # def delete_unique(conn, cf, key) do
-  #   sql = "DELETE FROM unique_indexes WHERE cf = ? AND key = ?"
-  #   execute(conn, sql, [cf, key])
-  # end
-
-  # def delete_unique(conn, cf, key, field) do
-  #   sql = "DELETE FROM unique_indexes WHERE cf = ? AND key = ? AND field = ?"
-  #   execute(conn, sql, [cf, field, key])
-  # end
-
   def create_index(conn, cf, field, key, value) do
     sql = "INSERT OR REPLACE INTO secondary_indexes (cf, field, key, value) VALUES (?, ?, ?, ?)"
     execute(conn, sql, [cf, field, key, value])
@@ -111,8 +81,8 @@ defmodule Kdb.Indexer do
     offset = Keyword.get(opts, :offset, 0)
     limit = Keyword.get(opts, :limit, 100)
 
+    # "SELECT key FROM secondary_indexes WHERE cf = ? AND field = ? AND value LIKE ? COLLATE NOCASE OFFSET ? LIMIT ?"
     sql =
-      # "SELECT key FROM secondary_indexes WHERE cf = ? AND field = ? AND value LIKE ? COLLATE NOCASE OFFSET ? LIMIT ?"
       "SELECT key FROM secondary_indexes WHERE cf = ? AND field = ? AND value LIKE ? OFFSET ? LIMIT ?"
 
     Stream.query(conn, sql, [cf, field, value, offset, limit])
@@ -167,16 +137,6 @@ defmodule Kdb.Indexer do
   defp create_tables(conn) do
     sql =
       [
-        # """
-        # CREATE TABLE IF NOT EXISTS unique_indexes (
-        #   cf TEXT,
-        #   field TEXT,
-        #   key TEXT,
-        #   value TEXT,
-        #   PRIMARY KEY (cf, field, key),
-        #   UNIQUE (cf, field, value)
-        # )
-        # """,
         """
         CREATE TABLE IF NOT EXISTS secondary_indexes (
           cf TEXT,
@@ -194,10 +154,16 @@ defmodule Kdb.Indexer do
   defp drop_tables(conn) do
     sql =
       [
-        # "DROP TABLE IF EXISTS unique_indexes",
         "DROP TABLE IF EXISTS secondary_indexes"
       ]
 
     Enum.each(sql, fn s -> execute(conn, s) end)
+  end
+
+  def backup(conn, filename) do
+    case execute(conn, "VACUUM INTO '#{filename}'") do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
+    end
   end
 end

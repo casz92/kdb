@@ -179,4 +179,44 @@ defmodule Kdb do
         {:error, e}
     end
   end
+
+  @spec backup(t(), charlist()) :: :ok | {:error, term()}
+  def backup(%Kdb{store: db}, target) do
+    {:ok, ref} = :rocksdb.open_backup_engine(target)
+
+    try do
+      :ok = :rocksdb.create_new_backup(ref, db)
+    rescue
+      e ->
+        IO.inspect(e, label: "Backup error")
+        {:error, e}
+    after
+      :rocksdb.close_backup_engine(ref)
+    end
+  end
+
+  @spec restore(charlist(), charlist()) :: :ok | {:error, term()}
+  def restore(source, folder_destiny) do
+    {:ok, ref} = :rocksdb.open_backup_engine(source)
+    :ok = File.mkdir_p(folder_destiny)
+    :ok = File.mkdir(folder_destiny)
+
+    try do
+      {:ok, backups} = :rocksdb.get_backup_info(ref)
+
+      if backups == [] do
+        {:error, :no_backups}
+      else
+        backup = List.first(backups)
+        :ok = :rocksdb.restore_db_from_backup(ref, backup.id, folder_destiny)
+        :ok
+      end
+    rescue
+      e ->
+        IO.inspect(e, label: "Restore error")
+        {:error, e}
+    after
+      :rocksdb.close_backup_engine(ref)
+    end
+  end
 end
