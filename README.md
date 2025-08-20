@@ -1,5 +1,5 @@
 # Kdb
-![Version](https://img.shields.io/badge/version-0.1.1-blue.svg)
+![Version](https://img.shields.io/badge/version-0.1.2-blue.svg)
 ![Status](https://img.shields.io/badge/status-active-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
@@ -27,7 +27,7 @@ The package can be installed by adding `kdb` to your list of dependencies in `mi
 ```elixir
 def deps do
   [
-    {:kdb, "~> 0.1.1"}
+    {:kdb, "~> 0.1.2"}
   ]
 end
 ```
@@ -50,7 +50,7 @@ end
 - [✅] Close
 - [❌] Backup & Restore
 - [✍️] Testing
-- [❌] Indexing
+- [✅] Indexing (Unique & Secondary)
 - [❌] Sharding
 - [❌] Replication
 - [❌] Benchmarking
@@ -75,11 +75,11 @@ defmodule Accounts do
   use Kdb.Bucket, 
   # Use atom, default current module last name (it is transformed to atom)
   name: :account,
-  # Unique keys
+  # Unique indexes
   unique: [{:name, AccountIndex}],
-  # secondary indexes
+  # Secondary indexes
   secondary: [:age],
-  # default is 5 minutes (300_000)
+  # TTL in cache (5 minutes)
   ttl: 30_000
 end
 
