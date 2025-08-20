@@ -97,8 +97,8 @@ defmodule Kdb.Indexer do
   """
   def query(conn, opts \\ []) do
     %{params: params, sql: sql} = Kql.to_sql(opts)
-    IO.inspect(sql, label: "SQL Query")
-    IO.inspect(params, label: "SQL Params")
+    # IO.inspect(sql, label: "SQL Query")
+    # IO.inspect(params, label: "SQL Params")
     Stream.query(conn, sql, params)
   end
 
@@ -113,7 +113,7 @@ defmodule Kdb.Indexer do
     sql =
       "SELECT key FROM secondary_indexes WHERE cf = ? AND field = ? AND value #{operator} ? #{after_operator} LIMIT ? OFFSET ?"
 
-    IO.inspect(sql, label: "SQL Query")
+    # IO.inspect(sql, label: "SQL Query")
 
     Stream.query(conn, sql, [cf, field, value, limit, offset])
   end
@@ -144,9 +144,11 @@ defmodule Kdb.Indexer do
           end
 
         Sqlite3.release(conn, stmt)
+        # IO.inspect(result, label: "SQL Execution Result")
         result
 
       error ->
+        # IO.inspect(error, label: "SQL Execution Error")
         error
     end
   end

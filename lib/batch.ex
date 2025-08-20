@@ -56,20 +56,23 @@ defmodule Kdb.Batch do
     end
   end
 
-  def commit(%__MODULE__{indexer: indexer, store: store, tasker: tasker} = batch) do
-    Poolder.Tasker.execute(tasker, fn ->
-      t1 = Task.async(fn -> Kdb.Store.Batch.commit(store) end)
-      t2 = Task.async(fn -> Kdb.Indexer.Batch.commit(indexer) end)
+  def commit(%__MODULE__{indexer: indexer, store: store, tasker: _tasker}) do
+    :ok = Kdb.Store.Batch.commit(store)
 
-      Task.await_many([t1, t2], :infinity)
-      release(batch)
-    end)
+    # [
+    #   Poolder.Tasker.callback(tasker, fn ->
+    :ok = Kdb.Indexer.Batch.commit(indexer)
+    #   end)
+    # ]
+    # |> Poolder.Tasker.await(:infinity)
+
+    :ok
   end
 
   def release(%__MODULE__{store: store, indexer: indexer, tasker: tasker} = batch) do
     Kdb.Store.Batch.release(store)
     Kdb.Indexer.Batch.release(indexer)
     Kdb.Registry.unregister(batch)
-    Poolder.Tasker.stop(tasker)
+    :ok = Poolder.Tasker.stop(tasker)
   end
 end

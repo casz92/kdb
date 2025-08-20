@@ -13,6 +13,7 @@ defmodule Kdb.Indexer.Batch do
   end
 
   def add(batch, operation, args) do
+    # IO.inspect({operation, args}, label: "Adding operation to batch")
     id = :erlang.unique_integer([:monotonic])
     :ets.insert(batch.t, {id, operation, args})
   end
@@ -23,7 +24,6 @@ defmodule Kdb.Indexer.Batch do
 
   def commit(batch) do
     operations = :ets.tab2list(batch.t)
-    :ets.delete(batch.t)
     conn = batch.conn
 
     # operations |> IO.inspect(label: "operations")

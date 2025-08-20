@@ -43,6 +43,7 @@ end
 - [❌] Count keys
 - [✅] Encoding/Decoding
 - [✅] Enumerable & Stream
+- [✅] Add and remove list items
 - [✅] Increment
 - [✅] Decrement
 - [✅] Delete

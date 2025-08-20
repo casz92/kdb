@@ -22,7 +22,7 @@ defmodule Kdb.Cache do
     ttl = Keyword.get(opts, :ttl, :infinity)
     name = Keyword.get(opts, :name) || make_ref()
     cache = %__MODULE__{name: name, ttl: ttl, t: t}
-    public = Keyword.get(opts, :public, false)
+    public = Keyword.get(opts, :public, true)
 
     if public do
       Kdb.Registry.register(cache)
@@ -84,6 +84,12 @@ defmodule Kdb.Cache do
       _ ->
         nil
     end
+  end
+
+  @spec update(cache :: t(), bucket :: atom(), key :: binary(), value :: term(), default :: term()) ::
+          boolean()
+  def update(%__MODULE__{t: t, ttl: ttl}, bucket, key, value, default) do
+    :ets.update_element(t, {bucket, key}, {2, value}, {{bucket, key}, default, ttl})
   end
 
   @spec delete(cache :: t(), atom(), binary()) :: true

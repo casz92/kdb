@@ -2,10 +2,10 @@ defmodule Kdb.Bucket.Stream do
   def stream(%Kdb.Bucket{dbname: dbname, handle: handle, module: module}, opts \\ []) do
     kdb = Kdb.get(dbname)
     db = kdb.store
-    # <<>> or <<0>> or :last
+    # seek: <<>> | <<0>> | :last
     initial_seek = Keyword.get(opts, :seek, <<>>)
-    # :next or :prev
-    direction = Keyword.get(opts, :direction, :next)
+    # action: :next | :prev
+    action = Keyword.get(opts, :action, :next)
     decoder_fun = Keyword.get(opts, :decoder, &module.decoder/1)
 
     Stream.resource(
@@ -31,7 +31,7 @@ defmodule Kdb.Bucket.Stream do
           item = {key, decoder_fun.(value)}
 
           next =
-            case :rocksdb.iterator_move(iter, direction) do
+            case :rocksdb.iterator_move(iter, action) do
               {:ok, next_key, next_val} -> {:ok, iter, next_key, next_val}
               _ -> {:done, iter}
             end
@@ -41,7 +41,7 @@ defmodule Kdb.Bucket.Stream do
 
       # After: close iterator
       fn iter ->
-        :ok = :rocksdb.iterator_close(iter)
+        :rocksdb.iterator_close(iter)
       end
     )
   end

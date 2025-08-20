@@ -43,10 +43,7 @@ defmodule Kdb.Bucket do
       @unique_map Enum.into(@unique, %{}, & &1)
       @stats_size "stats:#{@bucket}:size"
 
-      # @compile {:inline,
-      #           put: 3, get: 2, has_key?: 2, delete: 2, incr: 3, batch: 2, decoder: 1, encoder: 1}
-
-      @compile {:inline, transform: 6}
+      @compile {:inline, transform: 5, put_new: 3, get: 2, incr: 4, encoder: 1, decoder: 1}
 
       alias Kdb.Batch
       alias Kdb.Cache
@@ -102,22 +99,21 @@ defmodule Kdb.Bucket do
 
         if @has_unique do
           defp put_unique(batch, key, value) do
-            error =
-              Enum.any?(@unique, fn {field, module} ->
+            results =
+              Enum.map(@unique, fn {field, module} ->
                 val = Map.get(value, field)
 
-                not module.put_new(batch, val, key)
+                result = module.get(batch, val)
+                {result, module, val}
               end)
 
-            # If any unique index fails, we delete all the unique indexes
-            if error do
-              Enum.each(@unique, fn {field, module} ->
-                val = Map.get(value, field)
-                module.delete_in_memory(batch, val)
-              end)
-
+            if Enum.any?(results, fn {x, _mod, _v} -> x != nil end) do
               false
             else
+              Enum.each(results, fn {_r, module, val} ->
+                module.put(batch, val, key)
+              end)
+
               true
             end
           end
@@ -128,6 +124,7 @@ defmodule Kdb.Bucket do
         defp put_secondary(indexer, key, value) do
           Enum.each(@secondary, fn field ->
             value = Map.get(value, field)
+            # IO.inspect(value, label: "Secondary Index Value for #{field}")
 
             value != nil and
               Indexer.Batch.add(indexer, :create_index, [@bucket, field, key, value])
@@ -242,13 +239,15 @@ defmodule Kdb.Bucket do
         raw_batch = store.batch
         old_result = get(batch, key) || initial
 
-        if initial == old_result do
-          :rocksdb.batch_put(raw_batch, handle, key, @encoder.(initial))
-        end
+        # if initial == old_result do
+        #   :rocksdb.batch_put(raw_batch, handle, key, @encoder.(initial))
+        # end
 
-        :rocksdb.batch_merge(raw_batch, handle, key, @encoder.({:int_add, amount}))
+        # :rocksdb.batch_merge(raw_batch, handle, key, @encoder.({:int_add, amount}))
+        result = @cache.update_counter(cache, @bucket, key, amount, old_result)
+        :rocksdb.batch_put(raw_batch, handle, key, @encoder.(result))
 
-        @cache.update_counter(cache, @bucket, key, amount, old_result)
+        result
       end
 
       def append(batch, key, new_item) do
@@ -256,7 +255,7 @@ defmodule Kdb.Bucket do
           batch,
           key,
           new_item,
-          :list_append,
+          # :list_append,
           [],
           fn old_list, new_item ->
             old_list ++ [new_item]
@@ -269,12 +268,20 @@ defmodule Kdb.Bucket do
           batch,
           key,
           items,
-          :list_substract,
+          # :list_substract,
           [],
           fn old_list, items ->
             old_list -- items
           end
         )
+      end
+
+      def includes?(batch, key, item) do
+        case get(batch, key) do
+          nil -> false
+          list when is_list(list) -> item in list
+          _ -> false
+        end
       end
 
       defp transform(
@@ -283,23 +290,25 @@ defmodule Kdb.Bucket do
                  buckets: %{@bucket => %Kdb.Bucket{handle: handle}}
                },
                cache: cache,
-               store: %Kdb.Store.Batch{batch: raw_batch}
+               store: %{batch: raw_batch}
              },
              key,
              new_item,
-             operation,
+             #  operation,
              initial,
              fun
            ) do
         old_result = get(batch, key) || initial
 
-        if initial == old_result do
-          :rocksdb.batch_put(raw_batch, handle, key, @encoder.(initial))
-        end
+        # if initial == old_result do
+        #   :rocksdb.batch_put(raw_batch, handle, key, @encoder.(initial))
+        # end
 
-        :rocksdb.batch_merge(raw_batch, handle, key, @encoder.({operation, new_item}))
+        # :rocksdb.batch_merge(raw_batch, handle, key, @encoder.({operation, new_item}))
+
         new_value = fun.(old_result, new_item)
-        @cache.put(cache, @bucket, key, new_value)
+        :rocksdb.batch_put(raw_batch, handle, key, @encoder.(new_value))
+        @cache.update(cache, @bucket, key, new_value, new_value)
       end
 
       def delete(
@@ -313,22 +322,22 @@ defmodule Kdb.Bucket do
             },
             key
           ) do
-        @cache.delete(cache, @bucket, key)
         :rocksdb.batch_delete(store.batch, handle, key)
         @has_unique and delete_unique(batch, key)
         @has_secondary and delete_secondary(indexer, key)
-      end
-
-      def delete_in_memory(
-            %Kdb.Batch{cache: cache},
-            key
-          ) do
-        :ets.delete(cache.t, {@bucket, key})
+        @cache.delete(cache, @bucket, key)
       end
 
       defp delete_unique(batch, key) do
-        Enum.each(@unique, fn {_field, module} ->
-          module.delete(batch, key)
+        Enum.each(@unique, fn {field, module} ->
+          case get(batch, key) do
+            nil ->
+              nil
+
+            map ->
+              val = Map.get(map, field)
+              module.delete(batch, val)
+          end
         end)
       end
 
@@ -447,7 +456,5 @@ defmodule DefaultBucket do
 end
 
 defmodule Kdb.Stats do
-  use Kdb.Bucket,
-    name: :stats,
-    ttl: :infinity
+  use Kdb.Bucket, name: :stats
 end

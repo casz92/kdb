@@ -145,9 +145,10 @@ defmodule Kdb do
       try do
         fun.(batch)
         :ok = Kdb.Batch.commit(batch)
+        :ok = Kdb.Batch.release(batch)
       catch
         _exit, reason ->
-          Kdb.Batch.release(batch)
+          :ok = Kdb.Batch.release(batch)
           {:error, reason}
       end
 
