@@ -1,6 +1,6 @@
 # Kdb
 ![Version](https://img.shields.io/badge/version-0.1.1-blue.svg)
-![Status](https://img.shields.io/badge/status-non--stable-red.svg)
+![Status](https://img.shields.io/badge/status-active-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
 This library integrates RocksDB as a persistent storage backend with ETS as an in-memory cache featuring configurable TTL (time-to-live) support. It is purpose-built for high-demand environments that require both rapid read performance and robust, fault-tolerant write operations.
@@ -67,62 +67,66 @@ defmodule MyBucket do
   ttl: 30_000
 end
 
-defmodule MyAccount do
+defmodule AccountIndex do
+  use Kdb.Bucket, name: :accIndex, ttl: 60_000
+end
+
+defmodule Accounts do
   use Kdb.Bucket, 
   # Use atom, default current module last name (it is transformed to atom)
-  name: :my_bucket,
+  name: :account,
   # Unique keys
-  unique: ["name"],
+  unique: [{:name, AccountIndex}],
   # secondary indexes
-  secondary: ["age"],
+  secondary: [:age],
   # default is 5 minutes (300_000)
   ttl: 30_000
 end
 
 # Start the Kdb database
-{:ok, _sup} = Kdb.start_link(name: :dbname, folder: "database", buckets: [MyBucket])
+{:ok, _sup} = Kdb.start_link(name: :dbname, folder: "database", buckets: [MyBucket, AccountIndex, Accounts])
 
 # Get the database instance
 kdb = Kdb.get(:dbname)
 # Start/Get batch
-kdb = Kdb.batch(kdb, "first batch")
-# Get the bucket instance and the batch loaded inside
-myb = Kdb.get_bucket(kdb, :my_bucket)
+batch = Kdb.Batch.new(name: :first, db: kdb)
 
 # Write data (batch is necessary for transactional operations)
-MyBucket.put(myb, "key", "value")
-MyBucket.put(myb, "mykey", 10)
-MyBucket.put(myb, "mymap", %{a: 1, b: 2, c: 3})
-MyBucket.put(myb, "mytuple", {3, 2, 1, :go})
-MyBucket.incr(myb, "mykey", 12)
-MyBucket.incr(myb, "mykey", -2)
-
-# Read data
-{:ok, "value"} = MyBucket.fetch(myb, "key")
-myb["mykey"] == 20
-"value" == MyBucket.get(myb, "key")
-
+MyBucket.put(batch, "key", "value")
+MyBucket.put(batch, "mykey", 10)
+MyBucket.put(batch, "mymap", %{a: 1, b: 2, c: 3})
+MyBucket.put(batch, "mytuple", {3, 2, 1, :go})
+MyBucket.incr(batch, "mykey", 12)
+MyBucket.incr(batch, "mykey", -2)
+Accounts.put(batch, "jules_id", %{name: "Jules", age: 19})
+Accounts.put(batch, "markus_id", %{name: "Markus", age: 37})
+Accounts.put(batch, "jules_idx", %{name: "Jules", age: 29}) # false
 # Delete data
-:ok = MyBucket.delete(myb, "key")
+MyBucket.delete(batch, "key")
 
 # Commit changes from first batch
-:ok = Kdb.commit(kdb, "first batch")
+:ok = Kdb.Batch.commit(batch)
+
+# Read data
+myb = Kdb.get_bucket(kdb, :my_bucket)
+accounts = Kdb.get_bucket(kdb, :account)
+accounts["jules_id"] |> IO.inspect(label: "Jules account:")
+myb["mykey"] == 10
 
 # Transactional operations (memory isolation)
-Kdb.transaction(kdb, fn kdb ->
-  myb = kdb.buckets.my_bucket
-  Bucket.put(myb, "jess", 700)
-  Bucket.incr(myb, "carlos", 1000)
-  Bucket.put(myb, "jim", 950)
-  Bucket.put(myb, "caroline", 100)
-  Bucket.put(myb, "jony", 500)
+Kdb.transaction(kdb, fn batch ->
+  MyBucket.put(batch, "jess", 700)
+  MyBucket.incr(batch, "carlos", 1000)
+  MyBucket.put(batch, "jim", 950)
+  MyBucket.put(batch, "caroline", 100)
+  MyBucket.put(batch, "jony", 500)
 end)
 
 # List data
 myb |> Enum.to_list() |> IO.inspect()
 
 # Stream data
-myb |> Kdb.Stream.stream() |> Enum.to_list() |> IO.inspect()
+accounts |> Kdb.Bucket.Stream.stream() |> Enum.to_list() |> IO.inspect()
 
 # Close the database
 :ok = Kdb.close(kdb)

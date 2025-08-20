@@ -157,11 +157,11 @@ defmodule Kdb.Bucket do
       def put_new(batch, key, value) do
         case get(batch, key) do
           nil ->
-            IO.inspect("Inserting #{key} in #{@bucket}")
+            # IO.inspect("Inserting #{key} in #{@bucket}")
             put(batch, key, value)
 
           _value ->
-            IO.inspect("#{key} already exists in #{@bucket} bucket")
+            # IO.inspect("#{key} already exists in #{@bucket} bucket")
             false
         end
       end
@@ -315,34 +315,6 @@ defmodule Kdb.Bucket do
       end
     end
   end
-end
-
-defimpl Inspect, for: Kdb.Bucket do
-  def inspect(bucket, _opts) do
-    "#Kdb.Bucket<name: #{bucket.name}>"
-  end
-end
-
-defimpl Enumerable, for: Kdb.Bucket do
-  def reduce(bucket, acc, fun) do
-    # ← puedes parametrizar el nombre de tabla
-    stream = Kdb.Bucket.Stream.stream(bucket)
-    Enumerable.reduce(stream, acc, fun)
-  end
-
-  def count(bucket) do
-    # No se puede contar sin recorrer todo
-    {:error, bucket.module}
-  end
-
-  def member?(bucket, _element) do
-    # No implementado de forma eficiente
-    {:error, bucket.module}
-  end
-
-  def slice(bucket) do
-    {:error, bucket.module}
-  end
 
   @default_batch :default
   def fetch(%Kdb.Bucket{dbname: dbname, module: module, batch: batch}, key) do
@@ -370,6 +342,34 @@ defimpl Enumerable, for: Kdb.Bucket do
         module.put(batch, key, result)
         {:ok, value, result}
     end
+  end
+end
+
+defimpl Inspect, for: Kdb.Bucket do
+  def inspect(bucket, _opts) do
+    "#Kdb.Bucket<name: #{bucket.name}>"
+  end
+end
+
+defimpl Enumerable, for: Kdb.Bucket do
+  def reduce(bucket, acc, fun) do
+    # ← puedes parametrizar el nombre de tabla
+    stream = Kdb.Bucket.Stream.stream(bucket)
+    Enumerable.reduce(stream, acc, fun)
+  end
+
+  def count(bucket) do
+    # No se puede contar sin recorrer todo
+    {:error, bucket.module}
+  end
+
+  def member?(bucket, _element) do
+    # No implementado de forma eficiente
+    {:error, bucket.module}
+  end
+
+  def slice(bucket) do
+    {:error, bucket.module}
   end
 end
 
