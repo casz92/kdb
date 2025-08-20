@@ -34,6 +34,7 @@ defmodule Kdb.MixProject do
   defp deps do
     [
       {:rocksdb, "~> 1.9"},
+      {:exqlite, "0.33.0"},
       {:poolder, "~> 0.1.11"},
       {:ex_doc, "~> 0.29.4", only: :dev, runtime: false}
     ]

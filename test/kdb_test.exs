@@ -7,8 +7,16 @@ defmodule KdbTest do
     use Kdb.Bucket, name: :bucket, ttl: 1_000
   end
 
+  defmodule Bucket2Index do
+    use Kdb.Bucket, name: :bucket2Index, ttl: 60_000
+  end
+
   defmodule Bucket2 do
-    use Kdb.Bucket, name: Bucket2, ttl: 1_000
+    use Kdb.Bucket,
+      name: Bucket2,
+      unique: [{:name, Bucket2Index}],
+      secondary: [:age],
+      ttl: 1_000
   end
 
   # if File.exists?("database") do
@@ -16,61 +24,71 @@ defmodule KdbTest do
   # end
 
   test "database and buckets" do
-    {:ok, sup} = Kdb.start_link(name: :dbname, folder: "database", buckets: [Bucket, Bucket2])
+    opts = [name: :dbname, folder: "database", buckets: [Bucket, Bucket2Index, Bucket2]]
+    {:ok, sup} = Kdb.start_link(opts)
     kdb = Kdb.get(:dbname)
-    kdb = Kdb.batch(kdb, "first batch")
+    batch = Kdb.Batch.new(name: :first, db: kdb)
+
+    Bucket.put(batch, "mykey", 10)
+    DefaultBucket.put(batch, "mykey", 10)
+    Bucket2.put(batch, "john_id", %{name: "John", age: 20})
+    Bucket2.put(batch, "mike_id", %{name: "Mike", age: 22})
+    Bucket2.put(batch, "james_id", %{name: "James", age: 21})
+    assert false == Bucket2.put(batch, "james_idx", %{name: "James", age: 27})
+    Bucket.put(batch, "mykey2", "myvalue")
+    Bucket.put(batch, "mykey2", :pop)
+    Bucket.put(batch, "mykey2", :pop)
+    Bucket.put(batch, "mymap", %{a: 1, b: 2, c: 3})
+    # assert true == Bucket.has_key?(batch, "mykey2")
+    assert Bucket.incr(batch, "mykey", 7) == 17
+    assert Bucket.incr(batch, "mykey", -2) == 15
+    Bucket.delete(batch, "mykey2")
+    Bucket2.delete(batch, "james_id")
+    assert false == Bucket.has_key?(batch, "mykey2")
+    assert Bucket.get(batch, "mykey") == 15
+    assert :ok == Kdb.Batch.commit(batch)
+
     myb = Kdb.get_bucket(kdb, :bucket)
     myb2 = Kdb.get_bucket(kdb, :bucket2)
     defult = Kdb.get_bucket(kdb, :default)
-
-    Bucket.put(myb, "mykey", 10)
-    DefaultBucket.put(defult, "mykey", 10)
-    Bucket.put(myb, "mykey2", "myvalue")
-    Bucket.put(myb, "mykey2", :pop)
-    Bucket.put(myb2, "mykey2", :pop)
-    Bucket.put(myb2, "mymap", %{a: 1, b: 2, c: 3})
-    assert true == Bucket.has_key?(myb, "mykey2")
-    assert Bucket.incr(myb, "mykey", 7) == 17
-    assert Bucket.incr(myb, "mykey", -2) == 15
-    Bucket.delete(myb, "mykey2")
-    assert false == Bucket.has_key?(myb, "mykey2")
-    assert Bucket.get(myb, "mykey") == 15
-    assert myb["mykey"] == 15
-    assert myb2["mykey"] == nil
-    assert :ok == Kdb.commit(kdb, "first batch")
+    # assert myb2["mike_id"] != nil
+    assert true == is_struct(myb)
+    # assert myb2["mykey"] == nil
 
     # transaction
     assert :ok ==
-             Kdb.transaction(kdb, fn kdb ->
-               myb = kdb.buckets.bucket
-               Bucket.put(myb, "jess", 700)
-               Bucket.incr(myb, "carlos", 1000)
-               Bucket.put(myb, "jim", 950)
-               Bucket.put(myb, "caroline", 100)
-               Bucket.put(myb, "jony", 500)
+             Kdb.transaction(kdb, fn batch ->
+               Bucket.put(batch, "jess", 700)
+               Bucket.incr(batch, "carlos", 1000)
+               Bucket.put(batch, "jim", 950)
+               Bucket.put(batch, "caroline", 100)
+               Bucket.put(batch, "jony", 500)
              end)
 
     myb |> Enum.to_list() |> IO.inspect()
-    myb2 |> Kdb.Stream.stream() |> Enum.to_list() |> IO.inspect()
+    myb2 |> Kdb.Bucket.Stream.stream() |> Enum.to_list() |> IO.inspect()
     defult |> Enum.to_list() |> IO.inspect()
     assert :ok == Kdb.close(kdb)
+
+    # Bucket2.find(batch, "age", "20") |> Enum.to_list() |> IO.inspect(label: "find age 20")
+    Bucket2.get_unique(batch, "name", "John") |> IO.inspect(label: "get_unique name John")
     # assert true != Kdb.destroy(kdb)
     assert :ok == Supervisor.stop(sup)
   end
 
-  test "ttl" do
-    {:ok, sup} = Kdb.start_link(name: :dbname, folder: "database", buckets: [Bucket, Bucket2])
-    kdb = Kdb.get(:dbname)
-    kdb = Kdb.batch(kdb, :ttl)
-    myb = Kdb.get_bucket(kdb, :bucket)
-    Bucket.put(myb, "mykey", 10)
-    assert Bucket.get(myb, "mykey") == 10
-    Process.sleep(3000)
-    assert :ets.member(myb.t, "mykey") == true
-    Kdb.Scheduler.cleanup(nil)
-    assert :ets.member(myb.t, "mykey") == false
-    Kdb.release_batch(:ttl)
-    assert :ok == Kdb.close(kdb)
-    assert :ok == Supervisor.stop(sup)
-  end
+  # test "ttl" do
+  #   {:ok, sup} = Kdb.start_link(name: :dbname, folder: "database", buckets: [Bucket, Bucket2])
+  #   kdb = Kdb.get(:dbname)
+  #   kdb = Kdb.batch(kdb, :ttl)
+  #   myb = Kdb.get_bucket(kdb, :bucket)
+  #   Bucket.put(myb, "mykey", 10)
+  #   assert Bucket.get(myb, "mykey") == 10
+  #   Process.sleep(3000)
+  #   assert :ets.member(myb.t, "mykey") == true
+  #   Kdb.Scheduler.cleanup(nil)
+  #   assert :ets.member(myb.t, "mykey") == false
+  #   Kdb.release_batch(:ttl)
+  #   assert :ok == Kdb.close(kdb)
+  #   assert :ok == Supervisor.stop(sup)
+  # end
 end

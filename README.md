@@ -64,10 +64,19 @@ defmodule MyBucket do
   # Use atom, default current module last name (it is transformed to atom)
   name: :my_bucket,
   # default is 5 minutes (300_000)
-  ttl: 30_000,
-  # default values
-  decoder: &Kdb.binary_to_term/1,
-  encoder: &Kdb.term_to_binary/1
+  ttl: 30_000
+end
+
+defmodule MyAccount do
+  use Kdb.Bucket, 
+  # Use atom, default current module last name (it is transformed to atom)
+  name: :my_bucket,
+  # Unique keys
+  unique: ["name"],
+  # secondary indexes
+  secondary: ["age"],
+  # default is 5 minutes (300_000)
+  ttl: 30_000
 end
 
 # Start the Kdb database

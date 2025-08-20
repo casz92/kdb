@@ -1,29 +1,31 @@
 defmodule Kdb.Bucket do
-  defstruct [:db, :name, :dbname, :handle, :t, :batch, :module, :ttl, :cachable]
+  defstruct [:name, :dbname, :handle, :module, :batch, :ttl]
 
   @type t :: %__MODULE__{
-          db: reference(),
           name: atom(),
           dbname: atom(),
           handle: reference() | nil,
-          t: :ets.tid() | nil,
-          batch: reference() | nil,
           module: module(),
-          ttl: integer(),
-          cachable: boolean()
+          # batch name
+          batch: Kdb.Batch.t() | nil,
+          ttl: integer()
         }
 
   defmacro __using__(opts) do
     bucket = Keyword.get(opts, :name) || raise ArgumentError, "missing :name option"
     cache = Keyword.get(opts, :cache, Kdb.Cache)
     ttl = Keyword.get(opts, :ttl, 300_000)
-    decoder = Keyword.get(opts, :decoder, &Kdb.binary_to_term/1)
-    encoder = Keyword.get(opts, :encoder, &Kdb.term_to_binary/1)
+    unique = Keyword.get(opts, :unique, [])
+    secondary = Keyword.get(opts, :secondary, [])
+    decoder = Keyword.get(opts, :decoder, &Kdb.Utils.binary_to_term/1)
+    encoder = Keyword.get(opts, :encoder, &Kdb.Utils.term_to_binary/1)
 
     quote bind_quoted: [
             bucket: bucket,
             cache: cache,
             ttl: ttl,
+            unique: unique,
+            secondary: secondary,
             decoder: decoder,
             encoder: encoder
           ] do
@@ -33,97 +35,192 @@ defmodule Kdb.Bucket do
       @decoder decoder
       @encoder encoder
       @cacheable is_integer(ttl)
+      @unique unique
+      @secondary secondary
+      @has_unique length(unique) > 0
+      @has_secondary length(secondary) > 0
+      @has_index @has_unique or @has_secondary
+      @unique_map Enum.into(@unique, %{}, & &1)
 
-      @compile {:inline,
-                put: 3, get: 2, has_key?: 2, delete: 2, incr: 3, batch: 2, decoder: 1, encoder: 1}
+      # @compile {:inline,
+      #           put: 3, get: 2, has_key?: 2, delete: 2, incr: 3, batch: 2, decoder: 1, encoder: 1}
 
-      def new(dbname, db, handle) do
+      alias Kdb.Batch
+      alias Kdb.Cache
+      alias Kdb.Indexer
+
+      def new(opts) do
+        dbname = Keyword.fetch!(opts, :dbname)
+        handle = Keyword.fetch!(opts, :handle)
+        batch = Keyword.get(opts, :batch)
+
         %Kdb.Bucket{
           dbname: dbname,
-          db: db,
           name: @bucket,
           handle: handle,
-          t: new_table(),
           module: __MODULE__,
-          ttl: @ttl,
-          cachable: @cacheable
+          batch: batch,
+          ttl: @ttl
         }
       end
 
-      def new_table do
-        :ets.new(__MODULE__, [
-          :set,
-          :public,
-          read_concurrency: true,
-          write_concurrency: true
-        ])
-      end
+      # def new_table do
+      #   :ets.new(__MODULE__, [
+      #     :set,
+      #     :public,
+      #     read_concurrency: true,
+      #     write_concurrency: true
+      #   ])
+      # end
 
       def name, do: @bucket
       def ttl, do: @ttl
+      def indexes, do: (@unique |> Enum.map(fn {f, _mod} -> f end)) ++ @secondary
       def decoder(x), do: @decoder.(x)
       def encoder(x), do: @encoder.(x)
 
-      def batch(%Kdb.Bucket{dbname: dbname} = bucket, name) do
-        batch = Kdb.batch(name)
-        %{bucket | batch: batch}
-      end
+      if @has_index do
+        def put(
+              batch = %Kdb.Batch{
+                db:
+                  db = %Kdb{
+                    buckets: %{@bucket => %Kdb.Bucket{name: bucket_name, handle: handle}}
+                  },
+                cache: cache,
+                store: store,
+                indexer: indexer
+              },
+              key,
+              value
+            ) do
+          if put_unique(batch, key, value) do
+            :rocksdb.batch_put(store.batch, handle, key, @encoder.(value))
+            @has_secondary and put_secondary(indexer, key, value)
+            @cache.put(cache, bucket_name, key, value)
+          else
+            false
+          end
+        end
 
-      def put(
-            %Kdb.Bucket{
-              name: name,
-              dbname: dbname,
-              batch: batch,
-              handle: handle,
-              t: t,
-              ttl: ttl,
-              cachable: cachable
-            },
-            key,
-            value
-          ) do
-        :ets.insert(t, {key, value})
-        :rocksdb.batch_put(batch, handle, key, @encoder.(value))
-        cachable and @cache.put(dbname, name, key, ttl)
-      end
+        if @has_unique do
+          defp put_unique(batch, key, value) do
+            error =
+              Enum.any?(@unique, fn {field, module} ->
+                val = Map.get(value, field)
 
-      defp put_in_memory(
-             %Kdb.Bucket{name: name, dbname: dbname, t: t, ttl: ttl, cachable: cachable},
-             key,
-             value
-           ) do
-        :ets.insert(t, {key, value})
-        cachable and @cache.put(dbname, name, key, ttl)
-      end
+                not module.put_new(batch, val, key)
+              end)
 
-      def get(bucket, key) do
-        case :ets.lookup(bucket.t, key) do
-          [{^key, value}] ->
-            value
+            # If any unique index fails, we delete all the unique indexes
+            if error do
+              Enum.each(@unique, fn {field, module} ->
+                val = Map.get(value, field)
+                module.delete_in_memory(batch, val)
+              end)
 
-          [] ->
-            get_from_disk(bucket, key)
+              false
+            else
+              true
+            end
+          end
+        else
+          def put_unique(_, _, _), do: true
+        end
+
+        defp put_secondary(indexer, key, value) do
+          Enum.each(@secondary, fn field ->
+            value = Map.get(value, field)
+
+            value != nil and
+              Indexer.Batch.add(indexer, :create_index, [@bucket, field, key, value])
+          end)
+        end
+      else
+        def put(
+              %Kdb.Batch{
+                db:
+                  db = %Kdb{
+                    buckets: %{@bucket => %Kdb.Bucket{name: bucket_name, handle: handle}}
+                  },
+                cache: cache,
+                store: store,
+                indexer: indexer
+              },
+              key,
+              value
+            ) do
+          :rocksdb.batch_put(store.batch, handle, key, @encoder.(value))
+          @cache.put(cache, bucket_name, key, value)
         end
       end
 
-      def has_key?(bucket, key) do
-        case :ets.member(bucket.t, key) do
-          true ->
-            true
+      def put_new(batch, key, value) do
+        case get(batch, key) do
+          nil ->
+            IO.inspect("Inserting #{key} in #{@bucket}")
+            put(batch, key, value)
 
-          false ->
-            case get_from_disk(bucket, key) do
+          _value ->
+            IO.inspect("#{key} already exists in #{@bucket} bucket")
+            false
+        end
+      end
+
+      def get(
+            %Kdb.Batch{
+              db: %Kdb{
+                buckets: %{@bucket => %Kdb.Bucket{name: bucket_name, handle: handle}}
+              },
+              cache: cache
+            } = batch,
+            key
+          ) do
+        case @cache.get(cache, bucket_name, key) do
+          :delete ->
+            nil
+
+          nil ->
+            get_from_disk(batch, handle, key)
+
+          value ->
+            value
+        end
+      end
+
+      def has_key?(
+            %Kdb.Batch{
+              db: %Kdb{
+                buckets: %{@bucket => %Kdb.Bucket{name: bucket_name, handle: handle} = bucket}
+              },
+              cache: cache
+            } = batch,
+            key
+          ) do
+        case @cache.has_key?(cache, bucket_name, key) do
+          nil ->
+            case get_from_disk(batch, handle, key) do
               nil -> false
               _value -> true
             end
+
+          result ->
+            result
         end
       end
 
-      def get_from_disk(bucket, key) do
-        case :rocksdb.get(bucket.db, bucket.handle, key, []) do
+      defp get_from_disk(
+             %Kdb.Batch{
+               db: db,
+               cache: cache
+             },
+             handle,
+             key
+           ) do
+        case :rocksdb.get(db.store, handle, key, []) do
           {:ok, value} ->
             result = @decoder.(value)
-            put_in_memory(bucket, key, result)
+            # put in memory cache
+            @cache.put(cache, @bucket, key, result)
             result
 
           :not_found ->
@@ -131,133 +228,157 @@ defmodule Kdb.Bucket do
         end
       end
 
-      def incr(bucket = %Kdb.Bucket{batch: batch, handle: handle, t: t}, key, amount)
+      def incr(
+            batch = %Kdb.Batch{
+              db: %Kdb{
+                buckets: %{@bucket => %Kdb.Bucket{handle: handle}}
+              },
+              cache: cache,
+              store: store
+            },
+            key,
+            amount
+          )
           when is_integer(amount) do
-        result = get(bucket, key) || 0
-        result = :ets.update_counter(t, key, {2, amount}, {key, result})
-        :rocksdb.batch_put(batch, handle, key, @encoder.(result))
+        old_result = get(batch, key) || 0
+        result = @cache.update_counter(cache, @bucket, key, amount, old_result)
+        :rocksdb.batch_put(store.batch, handle, key, @encoder.(result))
         result
       end
 
       def delete(
-            %Kdb.Bucket{
-              name: name,
-              dbname: dbname,
-              batch: batch,
-              handle: handle,
-              t: t,
-              cachable: cachable
+            batch = %Kdb.Batch{
+              db: %Kdb{
+                buckets: %{@bucket => %Kdb.Bucket{handle: handle}}
+              },
+              indexer: indexer,
+              cache: cache,
+              store: store
             },
             key
           ) do
-        :ets.delete(t, key)
-        :rocksdb.batch_delete(batch, handle, key)
-        cachable and @cache.delete(dbname, name, key)
+        @cache.delete(cache, @bucket, key)
+        :rocksdb.batch_delete(store.batch, handle, key)
+        @has_unique and delete_unique(batch, key)
+        @has_secondary and delete_secondary(indexer, key)
+      end
+
+      def delete_in_memory(
+            %Kdb.Batch{cache: cache},
+            key
+          ) do
+        :ets.delete(cache.t, {@bucket, key})
+      end
+
+      defp delete_unique(batch, key) do
+        Enum.each(@unique, fn {_field, module} ->
+          module.delete(batch, key)
+        end)
+      end
+
+      defp delete_secondary(indexer = %Indexer.Batch{t: t}, key) do
+        Indexer.Batch.add(indexer, :delete_index, [@bucket, key])
+      end
+
+      if @has_index do
+        def get_unique(batch, field, key) do
+          case @unique_map[field] do
+            nil ->
+              nil
+
+            module ->
+              module.get(batch, key)
+          end
+        end
+
+        def unique?(batch, field, key) do
+          case @unique[field] do
+            {_, module} ->
+              module.has_key?(batch, key)
+
+            nil ->
+              false
+          end
+        end
+
+        def find(%Kdb.Batch{indexer: %{conn: conn}} = batch, attr, text) do
+          Kdb.Indexer.find(conn, @bucket, attr, text)
+          |> Stream.map(fn key ->
+            get(batch, key)
+          end)
+        end
+      end
+
+      def drop(%Kdb.Bucket{dbname: dbname, handle: handle}) do
+        db = Kdb.get(dbname)
+        :rocksdb.drop_column_family(db, handle)
       end
     end
   end
+end
 
-  defimpl Enumerable do
-    def reduce(bucket, acc, fun) do
-      # ← puedes parametrizar el nombre de tabla
-      stream = Kdb.Stream.stream(bucket, decoder: &bucket.module.decoder/1)
-      Enumerable.reduce(stream, acc, fun)
-    end
+defimpl Inspect, for: Kdb.Bucket do
+  def inspect(bucket, _opts) do
+    "#Kdb.Bucket<name: #{bucket.name}>"
+  end
+end
 
-    def count(bucket) do
-      # No se puede contar sin recorrer todo
-      {:error, bucket.module}
-    end
+defimpl Enumerable, for: Kdb.Bucket do
+  def reduce(bucket, acc, fun) do
+    # ← puedes parametrizar el nombre de tabla
+    stream = Kdb.Bucket.Stream.stream(bucket)
+    Enumerable.reduce(stream, acc, fun)
+  end
 
-    def member?(bucket, _element) do
-      # No implementado de forma eficiente
-      {:error, bucket.module}
-    end
+  def count(bucket) do
+    # No se puede contar sin recorrer todo
+    {:error, bucket.module}
+  end
 
-    def slice(bucket) do
-      {:error, bucket.module}
+  def member?(bucket, _element) do
+    # No implementado de forma eficiente
+    {:error, bucket.module}
+  end
+
+  def slice(bucket) do
+    {:error, bucket.module}
+  end
+
+  @default_batch :default
+  def fetch(%Kdb.Bucket{dbname: dbname, module: module, batch: batch}, key) do
+    batch = batch || Kdb.Batch.new(name: @default_batch, db: Kdb.get(dbname))
+
+    case module.get(batch, key) do
+      nil -> {:error, :not_found}
+      value -> {:ok, value}
     end
   end
 
-  def fetch(bucket = %Kdb.Bucket{module: module}, key) do
-    case :ets.lookup(bucket.t, key) do
-      [{^key, value}] ->
-        {:ok, value}
+  def get_and_update(
+        %Kdb.Bucket{dbname: dbname, module: module, batch: batch},
+        key,
+        fun
+      ) do
+    batch = batch || Kdb.Batch.new(name: @default_batch, db: Kdb.get(dbname))
 
-      [] ->
-        case module.get_from_disk(bucket, key) do
-          nil -> :error
-          value -> {:ok, value}
-        end
-    end
-  end
-
-  def get_and_update(bucket = %Kdb.Bucket{module: module}, key, fun) do
-    case module.get(bucket, key) do
+    case module.get(batch, key) do
       nil ->
         {:ok, nil, nil}
 
       value ->
         result = fun.(value)
-        module.put(bucket, key, result)
+        module.put(batch, key, result)
         {:ok, value, result}
     end
-  end
-
-  defimpl Inspect do
-    def inspect(bucket, _opts) do
-      "#Kdb.Bucket<name: #{bucket.name}>"
-    end
-  end
-end
-
-defmodule Kdb.Stream do
-  def stream(%Kdb.Bucket{db: db, handle: handle, module: module}, opts \\ []) do
-    # <<>> or <<0>> or :last
-    initial_seek = Keyword.get(opts, :seek, <<>>)
-    # :next or :prev
-    direction = Keyword.get(opts, :direction, :next)
-    decoder_fun = Keyword.get(opts, :decoder, &module.decoder/1)
-
-    Stream.resource(
-      # Start: open iterator and seek
-      fn ->
-        {:ok, iter} = :rocksdb.iterator(db, handle, [])
-
-        state =
-          case :rocksdb.iterator_move(iter, initial_seek) do
-            {:ok, key, value} -> {:ok, iter, key, value}
-            _ -> {:done, iter}
-          end
-
-        state
-      end,
-
-      # Next: return {k, v} and move iterator
-      fn
-        {:done, iter} ->
-          {:halt, iter}
-
-        {:ok, iter, key, value} ->
-          item = {key, decoder_fun.(value)}
-
-          next =
-            case :rocksdb.iterator_move(iter, direction) do
-              {:ok, next_key, next_val} -> {:ok, iter, next_key, next_val}
-              _ -> {:done, iter}
-            end
-
-          {[item], next}
-      end,
-
-      # After: close iterator
-      fn iter ->
-        :ok = :rocksdb.iterator_close(iter)
-      end
-    )
   end
 end
 
 defmodule DefaultBucket do
-  use Kdb.Bucket, name: :default, ttl: true
+  use Kdb.Bucket, name: :default
+end
+
+defmodule Kdb.Stats do
+  use Kdb.Bucket,
+    name: :stats,
+    ttl: true
 end

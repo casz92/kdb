@@ -7,11 +7,11 @@ defmodule Kdb.Supervisor do
 
   def init(args) do
     name = Keyword.fetch!(args, :name)
-    Kdb.new(name, args)
+    Kdb.new(args)
 
     children = [
       Kdb.Registry,
-      Kdb.Cache,
+      # Kdb.Cache,
       {Kdb.Scheduler, [name: name]}
     ]
 

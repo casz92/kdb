@@ -1,6 +1,6 @@
 defmodule Kdb.Registry do
   @table __MODULE__
-  # @bucket :bucket
+  @key :kdb
 
   def child_spec(_) do
     %{
@@ -13,73 +13,92 @@ defmodule Kdb.Registry do
   end
 
   def init do
-    if :ets.whereis(@table) == :undefined do
-      :ets.new(@table, [:set, :public, :named_table, read_concurrency: true])
+    if :ets.info(@table) == :undefined do
+      :ets.new(@table, [
+        :set,
+        :public,
+        :named_table,
+        read_concurrency: true,
+        write_concurrency: true
+      ])
     end
 
     :ignore
   end
 
-  # {bdname, kdb}
-  # {{bdname, bucket_name}, bucket}
-  # {{bdname, :global, :batch}, value}
-  # {{bdname, bucket_name, :batch}, value}
-  def register(name, %Kdb{} = kdb) do
-    :ets.insert(@table, {name, kdb})
+  # {:db, name}
+  # {:bucket, dbname, bucket_name}
+  # {:batch, name}
+  # {:cache, name}
+  def register(%Kdb{name: name} = kdb) do
+    # :ets.insert(@table, {name, kdb})
+    :persistent_term.put({@key, name}, kdb)
 
-    for bucket <- kdb.buckets do
-      :ets.insert(@table, {{name, bucket.name}, bucket})
-    end
-
-    :ok
+    # Enum.each(buckets, fn bucket ->
+    #   :ets.insert(@table, {{:db, name}, bucket})
+    # end)
   end
 
-  def register(name, value) do
-    :ets.insert(@table, {name, value})
+  def register(%Kdb.Bucket{name: name, dbname: dbname} = bucket) do
+    kdb = get_db(dbname)
 
-    :ok
+    :persistent_term.put({@key, dbname}, %{
+      kdb
+      | buckets: Map.put(kdb.buckets, name, bucket)
+    })
   end
 
-  def update(name, kdb) do
-    :ets.update_element(@table, name, {2, kdb})
+  def register(%Kdb.Batch{} = batch) do
+    :ets.insert(@table, {{:batch, batch.name}, batch})
   end
 
-  def unregister({:batch, _} = key) do
-    :ets.delete(@table, key)
+  def register(%Kdb.Cache{} = cache) do
+    :ets.insert(@table, {{:cache, cache.name}, cache})
+  end
+
+  def unregister(%Kdb{name: name}) do
+    :persistent_term.erase({@key, name})
+  end
+
+  def unregister(%Kdb.Bucket{name: name, dbname: dbname}) do
+    kdb = get_db(dbname)
+    :persistent_term.put({@key, dbname}, %{kdb | buckets: Map.delete(kdb.buckets, name)})
+  end
+
+  def unregister(%Kdb.Batch{} = batch) do
+    :ets.delete(@table, {:batch, batch.name})
+  end
+
+  def unregister(%Kdb.Cache{} = cache) do
+    :ets.delete(@table, {:cache, cache.name})
   end
 
   def unregister(name) do
     :ets.delete(@table, name)
-
-    :ets.foldl(
-      fn
-        {^name, _}, acc ->
-          :ets.delete(@table, name)
-          acc
-
-        {^name, _, _}, acc ->
-          :ets.delete(@table, name)
-          acc
-
-        _, acc ->
-          acc
-      end,
-      :ok,
-      @table
-    )
   end
 
-  def lookup(name) do
-    case :ets.lookup(@table, name) do
-      [{^name, kdb}] -> {:ok, kdb}
-      [] -> :error
+  def get_db(name) do
+    :persistent_term.get({@key, name}, nil)
+  end
+
+  def get_bucket(dbname, bucket_name) do
+    case :persistent_term.get({@key, dbname}, nil) do
+      nil -> nil
+      %Kdb{buckets: buckets} -> Map.get(buckets, bucket_name)
     end
   end
 
-  def lookup(name, bucket_name) do
-    case :ets.lookup(@table, {name, bucket_name}) do
-      [{^name, ^bucket_name, bucket}] -> {:ok, bucket}
-      [] -> :error
+  def get_batch(name) do
+    case :ets.lookup(@table, {:batch, name}) do
+      [{_id, object}] -> object
+      [] -> nil
+    end
+  end
+
+  def get_cache(name) do
+    case :ets.lookup(@table, {:cache, name}) do
+      [{_id, object}] -> object
+      [] -> nil
     end
   end
 end
