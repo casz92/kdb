@@ -46,21 +46,6 @@ defmodule Kdb.Cache do
     :ets.insert(t, {{bucket, key}, value, now() + ttl})
   end
 
-  # @spec put_new(
-  #         cache :: t(),
-  #         bucket :: atom(),
-  #         key :: binary(),
-  #         value :: term()
-  #       ) ::
-  #         boolean()
-  # def put_new(%__MODULE__{t: t, ttl: :infinity = ttl}, bucket, key, value) do
-  #   :ets.insert_new(t, {{bucket, key}, value, ttl})
-  # end
-
-  # def put_new(%__MODULE__{t: t, ttl: ttl}, bucket, key, value) do
-  #   :ets.insert_new(t, {{bucket, key}, value, now() + ttl})
-  # end
-
   @spec update_counter(
           cache :: t(),
           bucket_name :: atom(),

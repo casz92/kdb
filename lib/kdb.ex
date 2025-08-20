@@ -47,7 +47,7 @@ defmodule Kdb do
     dbname = Keyword.fetch!(opts, :name)
     root = Keyword.fetch!(opts, :folder)
     File.mkdir(root)
-    modules = Keyword.get(opts, :buckets, [])
+    modules = [Kdb.Stats] ++ Keyword.get(opts, :buckets, [])
     folder = Path.join(root, "data") |> to_charlist()
     conn = Kdb.Indexer.new(opts)
 

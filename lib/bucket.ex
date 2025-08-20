@@ -41,9 +41,12 @@ defmodule Kdb.Bucket do
       @has_secondary length(secondary) > 0
       @has_index @has_unique or @has_secondary
       @unique_map Enum.into(@unique, %{}, & &1)
+      @stats_size "stats:#{@bucket}:size"
 
       # @compile {:inline,
       #           put: 3, get: 2, has_key?: 2, delete: 2, incr: 3, batch: 2, decoder: 1, encoder: 1}
+
+      @compile {:inline, transform: 6}
 
       alias Kdb.Batch
       alias Kdb.Cache
@@ -64,20 +67,15 @@ defmodule Kdb.Bucket do
         }
       end
 
-      # def new_table do
-      #   :ets.new(__MODULE__, [
-      #     :set,
-      #     :public,
-      #     read_concurrency: true,
-      #     write_concurrency: true
-      #   ])
-      # end
-
       def name, do: @bucket
       def ttl, do: @ttl
       def indexes, do: (@unique |> Enum.map(fn {f, _mod} -> f end)) ++ @secondary
       def decoder(x), do: @decoder.(x)
       def encoder(x), do: @encoder.(x)
+
+      def info(batch) do
+        Kdb.Stats.get(batch, @stats_size) || 0
+      end
 
       if @has_index do
         def put(
@@ -237,13 +235,71 @@ defmodule Kdb.Bucket do
               store: store
             },
             key,
-            amount
+            amount,
+            initial \\ 0
           )
           when is_integer(amount) do
-        old_result = get(batch, key) || 0
-        result = @cache.update_counter(cache, @bucket, key, amount, old_result)
-        :rocksdb.batch_put(store.batch, handle, key, @encoder.(result))
-        result
+        raw_batch = store.batch
+        old_result = get(batch, key) || initial
+
+        if initial == old_result do
+          :rocksdb.batch_put(raw_batch, handle, key, @encoder.(initial))
+        end
+
+        :rocksdb.batch_merge(raw_batch, handle, key, @encoder.({:int_add, amount}))
+
+        @cache.update_counter(cache, @bucket, key, amount, old_result)
+      end
+
+      def append(batch, key, new_item) do
+        transform(
+          batch,
+          key,
+          new_item,
+          :list_append,
+          [],
+          fn old_list, new_item ->
+            old_list ++ [new_item]
+          end
+        )
+      end
+
+      def remove(batch, key, items) when is_list(items) do
+        transform(
+          batch,
+          key,
+          items,
+          :list_substract,
+          [],
+          fn old_list, items ->
+            old_list -- items
+          end
+        )
+      end
+
+      defp transform(
+             batch = %Kdb.Batch{
+               db: %Kdb{
+                 buckets: %{@bucket => %Kdb.Bucket{handle: handle}}
+               },
+               cache: cache,
+               store: %Kdb.Store.Batch{batch: raw_batch}
+             },
+             key,
+             new_item,
+             operation,
+             initial,
+             fun
+           ) do
+        old_result = get(batch, key) || initial
+
+        if initial == old_result do
+          :rocksdb.batch_put(raw_batch, handle, key, @encoder.(initial))
+        end
+
+        :rocksdb.batch_merge(raw_batch, handle, key, @encoder.({operation, new_item}))
+        new_value = fun.(old_result, new_item)
+        @cache.put(cache, @bucket, key, new_value)
       end
 
       def delete(
@@ -281,30 +337,30 @@ defmodule Kdb.Bucket do
       end
 
       if @has_index do
-        def get_unique(batch, field, key) do
+        def get_unique(batch, field, val) do
           case @unique_map[field] do
             nil ->
               nil
 
             module ->
-              module.get(batch, key)
+              module.get(batch, val)
           end
         end
 
-        def unique?(batch, field, key) do
-          case @unique[field] do
-            {_, module} ->
-              module.has_key?(batch, key)
-
+        def exists?(batch, field, val) do
+          case @unique_map[field] do
             nil ->
               false
+
+            module ->
+              module.has_key?(batch, val)
           end
         end
 
-        def find(%Kdb.Batch{indexer: %{conn: conn}} = batch, attr, text) do
-          Kdb.Indexer.find(conn, @bucket, attr, text)
-          |> Stream.map(fn key ->
-            get(batch, key)
+        def find(%Kdb.Batch{indexer: %{conn: conn}} = batch, attr, text, opts \\ []) do
+          Kdb.Indexer.find(conn, @bucket, attr, text, opts)
+          |> Stream.map(fn [result] ->
+            get(batch, result)
           end)
         end
       end
@@ -343,6 +399,19 @@ defmodule Kdb.Bucket do
         {:ok, value, result}
     end
   end
+
+  @doc """
+  Creates a new bucket module with the given name and options.
+  The module will use `Kdb.Bucket` and the options provided.
+  """
+  def make_bucket_module(mod_name, opts) when is_atom(mod_name) and is_list(opts) do
+    quoted =
+      quote do
+        use Kdb.Bucket, unquote_splicing(opts)
+      end
+
+    Module.create(mod_name, quoted, Macro.Env.location(__ENV__))
+  end
 end
 
 defimpl Inspect, for: Kdb.Bucket do
@@ -359,12 +428,12 @@ defimpl Enumerable, for: Kdb.Bucket do
   end
 
   def count(bucket) do
-    # No se puede contar sin recorrer todo
+    # No implemented yet
     {:error, bucket.module}
   end
 
   def member?(bucket, _element) do
-    # No implementado de forma eficiente
+    # No implemented yet
     {:error, bucket.module}
   end
 
@@ -380,5 +449,5 @@ end
 defmodule Kdb.Stats do
   use Kdb.Bucket,
     name: :stats,
-    ttl: true
+    ttl: :infinity
 end

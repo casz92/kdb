@@ -77,15 +77,45 @@ defmodule Kdb.Indexer do
     execute(conn, sql, [cf, field, key, value])
   end
 
+  @doc """
+  Executes a list query and returns a stream of results.
+  ## Examples
+  result =
+    Kql.to_sql(
+      select: "key",
+      from: "secondary_indexes",
+      where: [
+        {:cf, "=", "bucket2"},
+        {:field, "=", "name"},
+        {:key, "LIKE", "john_id", "COLLATE NOCASE"}
+      ],
+      limit: 10,
+      offset: 0
+    )
+
+    stream = Kdb.Indexer.query(conn, result)
+  """
+  def query(conn, opts \\ []) do
+    %{params: params, sql: sql} = Kql.to_sql(opts)
+    IO.inspect(sql, label: "SQL Query")
+    IO.inspect(params, label: "SQL Params")
+    Stream.query(conn, sql, params)
+  end
+
   def find(conn, cf, field, value, opts \\ []) do
     offset = Keyword.get(opts, :offset, 0)
     limit = Keyword.get(opts, :limit, 100)
+    operator = Keyword.get(opts, :operator, "LIKE")
+    # This is to allow for additional SQL clauses if needed
+    after_operator = Keyword.get(opts, :after_operator, "")
 
     # "SELECT key FROM secondary_indexes WHERE cf = ? AND field = ? AND value LIKE ? COLLATE NOCASE OFFSET ? LIMIT ?"
     sql =
-      "SELECT key FROM secondary_indexes WHERE cf = ? AND field = ? AND value LIKE ? OFFSET ? LIMIT ?"
+      "SELECT key FROM secondary_indexes WHERE cf = ? AND field = ? AND value #{operator} ? #{after_operator} LIMIT ? OFFSET ?"
 
-    Stream.query(conn, sql, [cf, field, value, offset, limit])
+    IO.inspect(sql, label: "SQL Query")
+
+    Stream.query(conn, sql, [cf, field, value, limit, offset])
   end
 
   def delete_index(conn, cf, key) do
@@ -99,7 +129,7 @@ defmodule Kdb.Indexer do
   end
 
   defp execute(conn, sql) do
-    Exqlite.Sqlite3.execute(conn, sql)
+    Sqlite3.execute(conn, sql)
   end
 
   defp execute(conn, sql, params) do

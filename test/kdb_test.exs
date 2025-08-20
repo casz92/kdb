@@ -68,11 +68,13 @@ defmodule KdbTest do
     myb |> Enum.to_list() |> IO.inspect()
     myb2 |> Kdb.Bucket.Stream.stream() |> Enum.to_list() |> IO.inspect()
     defult |> Enum.to_list() |> IO.inspect()
-    assert :ok == Kdb.close(kdb)
 
-    # Bucket2.find(batch, "age", "20") |> Enum.to_list() |> IO.inspect(label: "find age 20")
-    Bucket2.get_unique(batch, "name", "John") |> IO.inspect(label: "get_unique name John")
+    IO.inspect(kdb)
+    IO.inspect(kdb.buckets.bucket2index.handle)
+    Bucket2.exists?(batch, :name, "John") |> IO.inspect(label: "get_unique name John")
+    Bucket2.find(batch, "age", 18, operator: ">=") |> Enum.to_list() |> IO.inspect(label: "find age 20")
     # assert true != Kdb.destroy(kdb)
+    assert :ok == Kdb.close(kdb)
     assert :ok == Supervisor.stop(sup)
   end
 
