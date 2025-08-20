@@ -15,16 +15,3 @@ defmodule ZipUtil do
     |> Enum.map(&String.to_charlist(&1))
   end
 end
-
-defmodule Kdb.Util do
-  # def to_bucket_name(mod) when is_atom(mod), do: mod
-
-  def to_bucket_name(mod) do
-    mod
-    |> to_string()
-    |> String.split(".")
-    |> List.last()
-    |> String.downcase()
-    |> String.to_atom()
-  end
-end

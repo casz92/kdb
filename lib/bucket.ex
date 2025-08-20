@@ -28,7 +28,7 @@ defmodule Kdb.Bucket do
             decoder: decoder,
             encoder: encoder
           ] do
-      @bucket bucket |> Kdb.Util.to_bucket_name()
+      @bucket bucket |> Kdb.Utils.to_bucket_name()
       @cache cache
       @ttl ttl
       @decoder decoder

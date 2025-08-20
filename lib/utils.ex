@@ -22,4 +22,13 @@ defmodule Kdb.Utils do
   def binary_to_term(binary) do
     :erlang.binary_to_term(binary, [:safe])
   end
+
+  def to_bucket_name(mod) do
+    mod
+    |> to_string()
+    |> String.split(".")
+    |> List.last()
+    |> String.downcase()
+    |> String.to_atom()
+  end
 end
