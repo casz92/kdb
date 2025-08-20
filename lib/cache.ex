@@ -11,24 +11,31 @@ defmodule Kdb.Cache do
   @key_delete :delete
 
   def new(opts) do
-    t =
-      :ets.new(__MODULE__, [
-        :set,
-        :public,
-        read_concurrency: true,
-        write_concurrency: true
-      ])
-
-    ttl = Keyword.get(opts, :ttl, :infinity)
     name = Keyword.get(opts, :name) || make_ref()
-    cache = %__MODULE__{name: name, ttl: ttl, t: t}
-    public = Keyword.get(opts, :public, true)
 
-    if public do
-      Kdb.Registry.register(cache)
+    case Kdb.Registry.get_cache(name) do
+      nil ->
+        t =
+          :ets.new(__MODULE__, [
+            :set,
+            :public,
+            read_concurrency: true,
+            write_concurrency: true
+          ])
+
+        ttl = Keyword.get(opts, :ttl, :infinity)
+        cache = %__MODULE__{name: name, ttl: ttl, t: t}
+        public = Keyword.get(opts, :public, true)
+
+        if public do
+          Kdb.Registry.register(cache)
+        end
+
+        cache
+
+      cache ->
+        cache
     end
-
-    cache
   end
 
   @spec put(
@@ -86,7 +93,13 @@ defmodule Kdb.Cache do
     end
   end
 
-  @spec update(cache :: t(), bucket :: atom(), key :: binary(), value :: term(), default :: term()) ::
+  @spec update(
+          cache :: t(),
+          bucket :: atom(),
+          key :: binary(),
+          value :: term(),
+          default :: term()
+        ) ::
           boolean()
   def update(%__MODULE__{t: t, ttl: ttl}, bucket, key, value, default) do
     :ets.update_element(t, {bucket, key}, {2, value}, {{bucket, key}, default, ttl})

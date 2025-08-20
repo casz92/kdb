@@ -6,7 +6,6 @@ defmodule Kdb.Bucket do
           dbname: atom(),
           handle: reference() | nil,
           module: module(),
-          # batch name
           batch: Kdb.Batch.t() | nil,
           ttl: integer()
         }
@@ -377,6 +376,27 @@ defmodule Kdb.Bucket do
       def drop(%Kdb.Bucket{dbname: dbname, handle: handle}) do
         db = Kdb.get(dbname)
         :rocksdb.drop_column_family(db, handle)
+      end
+
+      ## Multi API
+      def multi_put(batch, key, value) do
+        put(batch, key, value)
+        batch
+      end
+
+      def multi_delete(batch, key) do
+        delete(batch, key)
+        batch
+      end
+
+      def multi_append(batch, key, new_item) do
+        append(batch, key, new_item)
+        batch
+      end
+
+      def multi_remove(batch, key, items) do
+        remove(batch, key, items)
+        batch
       end
     end
   end

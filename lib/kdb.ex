@@ -181,8 +181,9 @@ defmodule Kdb do
     end
   end
 
-  @spec backup(t(), charlist()) :: :ok | {:error, term()}
+  @spec backup(t(), Path.t()) :: :ok | {:error, term()}
   def backup(%Kdb{store: db}, target) do
+    target = to_charlist(target)
     {:ok, ref} = :rocksdb.open_backup_engine(target)
 
     try do
@@ -196,8 +197,9 @@ defmodule Kdb do
     end
   end
 
-  @spec restore(charlist(), charlist()) :: :ok | {:error, term()}
+  @spec restore(charlist(), Path.t()) :: :ok | {:error, term()}
   def restore(source, folder_destiny) do
+    folder_destiny = to_charlist(folder_destiny)
     {:ok, ref} = :rocksdb.open_backup_engine(source)
     :ok = File.mkdir_p(folder_destiny)
     :ok = File.mkdir(folder_destiny)

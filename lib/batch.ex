@@ -18,6 +18,7 @@ defmodule Kdb.Batch do
     case Kdb.Registry.get_batch(name) do
       nil ->
         kdb = Keyword.fetch!(opts, :db)
+        public = Keyword.get(opts, :public, true)
 
         tasker_name =
           if is_reference(name) do
@@ -45,7 +46,7 @@ defmodule Kdb.Batch do
             tasker: tasker
           }
 
-        if not is_reference(batch.store) do
+        if public do
           Kdb.Registry.register(batch)
         end
 

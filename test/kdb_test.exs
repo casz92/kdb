@@ -69,10 +69,12 @@ defmodule KdbTest do
     # List
     Bucket.get(batch, "mylist")
     # |> IO.inspect(label: "mylist after append and remove")
-    Bucket.append(batch, "mylist", "item1")
-    Bucket.append(batch, "mylist", "item2")
-    Bucket.append(batch, "mylist", "item3")
-    Bucket.remove(batch, "mylist", ["item2"])
+    batch
+    |> Bucket.multi_append("mylist", "item1")
+    |> Bucket.multi_append("mylist", "item2")
+    |> Bucket.multi_append("mylist", "item3")
+    |> Bucket.multi_remove("mylist", ["item2"])
+
     assert Bucket.includes?(batch, "mylist", "item1") == true
     assert Bucket.includes?(batch, "mylist", "item2") == false
     assert :ok == Kdb.Batch.commit(batch)
@@ -90,6 +92,7 @@ defmodule KdbTest do
 
     bi |> Enum.to_list() |> IO.inspect(label: "bucket2index")
 
+    Kdb.backup(kdb, "backup")
     assert :ok == Kdb.close(kdb)
     assert :ok == Supervisor.stop(sup)
     assert :ok == Kdb.destroy(kdb)
