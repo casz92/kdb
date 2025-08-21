@@ -1,5 +1,5 @@
 # Kdb
-![Version](https://img.shields.io/badge/version-0.1.2-blue.svg)
+![Version](https://img.shields.io/badge/version-0.1.3-blue.svg)
 ![Status](https://img.shields.io/badge/status-active-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
@@ -26,7 +26,7 @@ The package can be installed by adding `kdb` to your list of dependencies in `mi
 ```elixir
 def deps do
   [
-    {:kdb, "~> 0.1.2"}
+    {:kdb, "~> 0.1.3"}
   ]
 end
 ```
