@@ -77,6 +77,14 @@ defmodule Kdb.Bucket do
         @stats.get(batch, @info_keys, 0)
       end
 
+      if @has_stats do
+        def incr_count(batch, amount) do
+          @stats.incr(batch, @info_keys, amount)
+        end
+      else
+        def incr_count(_batch, _amount), do: true
+      end
+
       if @has_index do
         def put(
               batch = %Kdb.Batch{
@@ -155,7 +163,7 @@ defmodule Kdb.Bucket do
       def put_new(batch, key, value) do
         case get(batch, key) do
           nil ->
-            put(batch, key, value) and @stats.incr(batch, @info_keys, 1)
+            put(batch, key, value) and incr_count(batch, 1)
 
           _value ->
             false
@@ -329,7 +337,7 @@ defmodule Kdb.Bucket do
         @has_unique and delete_unique(batch, key)
         @has_secondary and delete_secondary(indexer, key)
         @cache.delete(cache, @bucket, key)
-        @has_stats and @stats.incr(batch, @info_keys, -1)
+        @has_stats and incr_count(batch, -1)
       end
 
       defp delete_unique(batch, key) do

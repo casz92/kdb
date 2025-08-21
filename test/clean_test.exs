@@ -8,6 +8,6 @@ defmodule CleanTest do
   test "clean" do
     # clean all test data
     File.exists?(@backup_file) and File.rm(@backup_file)
-    File.exists?(@database) and File.rm(@database)
+    File.exists?(@database) and File.rm_rf(@database)
   end
 end
