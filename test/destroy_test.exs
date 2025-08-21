@@ -1,7 +1,6 @@
 # mix test test/destroy_test.exs
 defmodule DestroyTest do
   use ExUnit.Case, async: false
-  # use ExUnit.Case
   doctest Kdb
 
   import KdbTestUtils

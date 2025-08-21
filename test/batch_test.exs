@@ -1,7 +1,6 @@
 # mix test test/batch_test.exs
 defmodule BatchTest do
   use ExUnit.Case, async: false
-  # use ExUnit.Case
   doctest Kdb
 
   import Kdb.Bucket, only: [put_batch: 2]

@@ -1,7 +1,6 @@
 # mix test test/ttl_test.exs
 defmodule TtlTest do
   use ExUnit.Case, async: false
-  # use ExUnit.Case
   doctest Kdb
 
   import KdbTestUtils

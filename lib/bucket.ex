@@ -155,8 +155,7 @@ defmodule Kdb.Bucket do
       def put_new(batch, key, value) do
         case get(batch, key) do
           nil ->
-            put(batch, key, value)
-            @stats.incr(batch, @info_keys, 1)
+            put(batch, key, value) and @stats.incr(batch, @info_keys, 1)
 
           _value ->
             false
