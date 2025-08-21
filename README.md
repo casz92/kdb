@@ -38,7 +38,7 @@ end
 - [✅] Get & put
 - [✅] Fetch & Access
 - [✅] Batching
-- [✅] TTL
+- [✅] TTL cache
 - [✅] Count keys globally and by pattern
 - [✅] Encoding/Decoding
 - [✅] Enumerable & Stream
@@ -104,9 +104,9 @@ MyBucket.put(batch, "mymap", %{a: 1, b: 2, c: 3})
 MyBucket.put(batch, "mytuple", {3, 2, 1, :go})
 MyBucket.incr(batch, "mykey", 12)
 MyBucket.incr(batch, "mykey", -2)
-Accounts.put(batch, "jules_id", %{name: "Jules", age: 19})
-Accounts.put(batch, "markus_id", %{name: "Markus", age: 37})
-Accounts.put(batch, "jules_idx", %{name: "Jules", age: 29}) # false
+Accounts.put_new(batch, "user_sdlkfjk", %{name: "Jules", age: 19})
+Accounts.put_new(batch, "user_sdoljf", %{name: "Markus", age: 37})
+Accounts.put_new(batch, "admin_jsdhju", %{name: "Gary", age: 29})
 # Delete data
 MyBucket.delete(batch, "key")
 
