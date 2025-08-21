@@ -76,8 +76,6 @@ defmodule Kdb.Bucket.Stream do
           {:halt, iter}
 
         {:ok, iter, key} ->
-          IO.puts("aqui paso")
-
           next =
             case :rocksdb.iterator_move(iter, action) do
               {:ok, next_key, _next_val} -> {:ok, iter, next_key}

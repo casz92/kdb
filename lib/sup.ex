@@ -11,7 +11,6 @@ defmodule Kdb.Supervisor do
 
     children = [
       Kdb.Registry,
-      # Kdb.Cache,
       {Kdb.Scheduler, [name: name]}
     ]
 

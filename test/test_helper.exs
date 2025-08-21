@@ -13,7 +13,10 @@ defmodule Bucket2 do
     name: :bucket2,
     unique: [{:name, Bucket2Index}],
     secondary: [:age],
-    ttl: 1_000
+    prefixs: [
+      {"accounts", ~r/^acc_/}
+    ],
+    ttl: :infinity
 end
 
 defmodule KdbTestUtils do

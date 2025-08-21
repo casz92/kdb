@@ -32,6 +32,7 @@ defmodule InspectTest do
     |> IO.inspect(label: "default bucket stream")
 
     DefaultBucket.count_keys(batch) |> IO.inspect(label: "count keys default bucket")
+    Bucket2.count_keys(batch, "accounts") |> IO.inspect(label: "count keys accounts")
 
     default
     |> Kdb.Bucket.Stream.keys(action: :prev, seek: :last)

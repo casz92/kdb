@@ -14,7 +14,7 @@ defmodule IncrementTest do
     Bucket.incr(batch, "counter", 1)
     Bucket.incr(batch, "counter", 2)
     Bucket.incr(batch, "counter", 3)
-    assert Bucket.get(batch, "counter") == (6 + c)
+    assert Bucket.get(batch, "counter") == 6 + c
     assert :ok == Kdb.Batch.commit(batch)
 
     close(params)

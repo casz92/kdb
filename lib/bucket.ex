@@ -19,6 +19,7 @@ defmodule Kdb.Bucket do
     decoder = Keyword.get(opts, :decoder, &Kdb.Utils.binary_to_term/1)
     encoder = Keyword.get(opts, :encoder, &Kdb.Utils.term_to_binary/1)
     stats = Keyword.get(opts, :stats, Kdb.Stats)
+    prefixs = Keyword.get(opts, :prefixs, [])
 
     quote bind_quoted: [
             bucket: bucket,
@@ -28,7 +29,8 @@ defmodule Kdb.Bucket do
             secondary: secondary,
             decoder: decoder,
             encoder: encoder,
-            stats: stats
+            stats: stats,
+            prefixs: prefixs
           ] do
       @bucket bucket |> Kdb.Utils.to_bucket_name()
       @cache cache
@@ -45,6 +47,10 @@ defmodule Kdb.Bucket do
       @stats stats
       @has_stats stats != false
       @info_keys "#{@bucket}:keys"
+      @has_prefixs length(prefixs) > 0
+      @prefixs Enum.map(prefixs, fn {name, regex} ->
+                 {"#{@bucket}:#{name}:keys", regex}
+               end)
 
       @compile {:inline, transform: 5, put_new: 3, get: 3, incr: 4, encoder: 1, decoder: 1}
 
@@ -77,12 +83,28 @@ defmodule Kdb.Bucket do
         @stats.get(batch, @info_keys, 0)
       end
 
+      def count_keys(batch, name) do
+        @stats.get(batch, "#{@bucket}:#{name}:keys", 0)
+      end
+
       if @has_stats do
-        def incr_count(batch, amount) do
-          @stats.incr(batch, @info_keys, amount)
+        if @has_prefixs do
+          def incr_count(batch, key, amount) do
+            for {prefix, regex} <- @prefixs do
+              if Regex.match?(regex, key) do
+                @stats.incr(batch, prefix, amount)
+              end
+            end
+
+            @stats.incr(batch, @info_keys, amount)
+          end
+        else
+          def incr_count(batch, _key, amount) do
+            @stats.incr(batch, @info_keys, amount)
+          end
         end
       else
-        def incr_count(_batch, _amount), do: true
+        def incr_count(_batch, _keys, _amount), do: true
       end
 
       if @has_index do
@@ -102,7 +124,7 @@ defmodule Kdb.Bucket do
           if put_unique(batch, key, value) do
             :rocksdb.batch_put(store.batch, handle, key, @encoder.(value))
             @has_secondary and put_secondary(indexer, key, value)
-            @cache.put(cache, bucket_name, key, value)
+            @cache.put(cache, bucket_name, key, value, @ttl)
           else
             false
           end
@@ -156,14 +178,14 @@ defmodule Kdb.Bucket do
               value
             ) do
           :rocksdb.batch_put(store.batch, handle, key, @encoder.(value))
-          @cache.put(cache, bucket_name, key, value)
+          @cache.put(cache, bucket_name, key, value, @ttl)
         end
       end
 
       def put_new(batch, key, value) do
         case get(batch, key) do
           nil ->
-            put(batch, key, value) and incr_count(batch, 1)
+            put(batch, key, value) and incr_count(batch, key, 1)
 
           _value ->
             false
@@ -180,7 +202,7 @@ defmodule Kdb.Bucket do
             key,
             default \\ nil
           ) do
-        case @cache.get(cache, bucket_name, key) do
+        case @cache.get(cache, bucket_name, key, @ttl) do
           :delete ->
             default
 
@@ -226,7 +248,7 @@ defmodule Kdb.Bucket do
           {:ok, value} ->
             result = @decoder.(value)
             # put in memory cache
-            @cache.put(cache, @bucket, key, result)
+            @cache.put(cache, @bucket, key, result, @ttl)
             result
 
           :not_found ->
@@ -255,7 +277,7 @@ defmodule Kdb.Bucket do
         # end
 
         # :rocksdb.batch_merge(raw_batch, handle, key, @encoder.({:int_add, amount}))
-        result = @cache.update_counter(cache, @bucket, key, amount, old_result)
+        result = @cache.update_counter(cache, @bucket, key, amount, old_result, @ttl)
         :rocksdb.batch_put(raw_batch, handle, key, @encoder.(result))
 
         result
@@ -319,7 +341,7 @@ defmodule Kdb.Bucket do
 
         new_value = fun.(old_result, new_item)
         :rocksdb.batch_put(raw_batch, handle, key, @encoder.(new_value))
-        @cache.update(cache, @bucket, key, new_value, new_value)
+        @cache.update(cache, @bucket, key, new_value, new_value, @ttl)
       end
 
       def delete(
@@ -337,7 +359,7 @@ defmodule Kdb.Bucket do
         @has_unique and delete_unique(batch, key)
         @has_secondary and delete_secondary(indexer, key)
         @cache.delete(cache, @bucket, key)
-        @has_stats and incr_count(batch, -1)
+        @has_stats and incr_count(batch, key, -1)
       end
 
       defp delete_unique(batch, key) do

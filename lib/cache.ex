@@ -23,7 +23,7 @@ defmodule Kdb.Cache do
             write_concurrency: true
           ])
 
-        ttl = Keyword.get(opts, :ttl, :infinity)
+        ttl = Keyword.get(opts, :ttl, :undefined)
         cache = %__MODULE__{name: name, ttl: ttl, t: t}
         public = Keyword.get(opts, :public, true)
 
@@ -42,15 +42,12 @@ defmodule Kdb.Cache do
           cache :: t(),
           bucket :: atom(),
           key :: binary(),
-          value :: term()
+          value :: term(),
+          bucket_ttl :: integer() | :infinity
         ) ::
           boolean()
-  def put(%__MODULE__{t: t, ttl: :infinity = ttl}, bucket, key, value) do
-    :ets.insert(t, {{bucket, key}, value, ttl})
-  end
-
-  def put(%__MODULE__{t: t, ttl: ttl}, bucket, key, value) do
-    :ets.insert(t, {{bucket, key}, value, now() + ttl})
+  def put(%__MODULE__{t: t, ttl: ttl}, bucket, key, value, bucket_ttl) do
+    :ets.insert(t, {{bucket, key}, value, calc_ttl(ttl, bucket_ttl)})
   end
 
   @spec update_counter(
@@ -58,21 +55,31 @@ defmodule Kdb.Cache do
           bucket_name :: atom(),
           key :: binary(),
           amount :: integer(),
-          default :: term()
+          default :: term(),
+          bucket_ttl :: integer() | :infinity
         ) ::
           integer()
-  def update_counter(%__MODULE__{t: t, ttl: ttl}, bucket_name, key, amount, default) do
+  def update_counter(%__MODULE__{t: t, ttl: ttl}, bucket_name, key, amount, default, bucket_ttl) do
     id = {bucket_name, key}
-    :ets.update_counter(t, id, {2, amount}, {id, default, ttl})
+    :ets.update_counter(t, id, {2, amount}, {id, default, calc_ttl(ttl, bucket_ttl)})
   end
 
-  @spec get(cache :: t(), bucket_name :: atom(), key :: binary()) :: term() | nil
-  def get(%__MODULE__{t: t}, bucket, key) do
-    case :ets.lookup(t, {bucket, key}) do
+  @spec get(
+          cache :: t(),
+          bucket_name :: atom(),
+          key :: binary(),
+          bucket_ttl :: integer() | :infinity
+        ) :: term() | nil
+  def get(%__MODULE__{t: t, ttl: ttl}, bucket, key, bucket_ttl) do
+    id = {bucket, key}
+
+    case :ets.lookup(t, id) do
       [{_key, @key_delete, _timestamp}] ->
         @key_delete
 
       [{_key, value, _timestamp}] ->
+        update_ttl(t, id, calc_ttl(ttl, bucket_ttl))
+
         value
 
       _ ->
@@ -98,21 +105,23 @@ defmodule Kdb.Cache do
           bucket :: atom(),
           key :: binary(),
           value :: term(),
-          default :: term()
+          default :: term(),
+          bucket_ttl :: integer() | :infinity
         ) ::
           boolean()
-  def update(%__MODULE__{t: t, ttl: ttl}, bucket, key, value, default) do
-    :ets.update_element(t, {bucket, key}, {2, value}, {{bucket, key}, default, ttl})
+  def update(%__MODULE__{t: t, ttl: ttl}, bucket, key, value, default, bucket_ttl) do
+    :ets.update_element(
+      t,
+      {bucket, key},
+      {2, value},
+      {{bucket, key}, default, calc_ttl(ttl, bucket_ttl)}
+    )
   end
 
   @spec delete(cache :: t(), atom(), binary()) :: true
   def delete(%__MODULE__{t: t}, bucket, id) do
     # :ets.delete(t, {bucket, id})
     :ets.insert(t, {{bucket, id}, @key_delete, 0})
-  end
-
-  defp now do
-    :os.system_time(@unit_time)
   end
 
   def cleanup(older_than) do
@@ -144,7 +153,7 @@ defmodule Kdb.Cache do
             :ets.delete(tid, key)
             acc + 1
 
-          {key, _value, readed_at}, acc when readed_at < older_than ->
+          {key, _value, readed_at}, acc when is_integer(readed_at) and readed_at < older_than ->
             :ets.delete(tid, key)
             acc + 1
 
@@ -156,5 +165,20 @@ defmodule Kdb.Cache do
       )
 
     n
+  end
+
+  defp calc_ttl(:infinity, _b), do: :infinity
+  defp calc_ttl(:undefined, :infinity), do: :infinity
+  defp calc_ttl(:undefined, ttl), do: now_add(ttl)
+  defp calc_ttl(ttl, _), do: now_add(ttl)
+
+  defp now_add(ttl) do
+    :os.system_time(@unit_time) + ttl
+  end
+
+  defp update_ttl(_t, _id, ttl) when is_atom(ttl), do: :ok
+
+  defp update_ttl(t, id, ttl) do
+    :ets.update_element(t, id, {3, now_add(ttl)})
   end
 end

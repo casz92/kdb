@@ -10,13 +10,17 @@ defmodule TtlTest do
   end
 
   test "ttl", %{kdb: kdb} = params do
-    batch = Kdb.Batch.new(name: :first, db: kdb, cache: [name: :temp, ttl: 1000])
+    batch = Kdb.Batch.new(name: :first, db: kdb, cache: [name: :temp])
 
     batch
     |> Bucket.multi_put("a1", "item1")
     |> Bucket.multi_put("a2", "item2")
     |> Bucket.multi_put("a3", 59856)
     |> Bucket.multi_append("a4", ["item2", 157, :pop])
+
+    batch
+    |> Bucket2.multi_put("acc_psE8Fl92TMn", %{name: "Stephanie Johnson", age: 27})
+    |> Bucket2.multi_put("acc_F84Eplf4Rt", %{name: "Michelle Beckman", age: 27})
 
     t = batch.cache.t
     lista = :ets.tab2list(t)
@@ -27,7 +31,8 @@ defmodule TtlTest do
     Kdb.Scheduler.cleanup(nil)
 
     listb = :ets.tab2list(t)
-    assert length(listb) == 0
+    IO.inspect(listb, label: "Records after clean")
+    assert length(listb) == 5
 
     close(params)
   end
