@@ -18,6 +18,7 @@ defmodule Kdb.Bucket do
     secondary = Keyword.get(opts, :secondary, [])
     decoder = Keyword.get(opts, :decoder, &Kdb.Utils.binary_to_term/1)
     encoder = Keyword.get(opts, :encoder, &Kdb.Utils.term_to_binary/1)
+    stats = Keyword.get(opts, :stats, Kdb.Stats)
 
     quote bind_quoted: [
             bucket: bucket,
@@ -26,7 +27,8 @@ defmodule Kdb.Bucket do
             unique: unique,
             secondary: secondary,
             decoder: decoder,
-            encoder: encoder
+            encoder: encoder,
+            stats: stats
           ] do
       @bucket bucket |> Kdb.Utils.to_bucket_name()
       @cache cache
@@ -40,9 +42,11 @@ defmodule Kdb.Bucket do
       @has_secondary length(secondary) > 0
       @has_index @has_unique or @has_secondary
       @unique_map Enum.into(@unique, %{}, & &1)
-      @stats_size "stats:#{@bucket}:size"
+      @stats stats
+      @has_stats stats != false
+      @info_keys "#{@bucket}:keys"
 
-      @compile {:inline, transform: 5, put_new: 3, get: 2, incr: 4, encoder: 1, decoder: 1}
+      @compile {:inline, transform: 5, put_new: 3, get: 3, incr: 4, encoder: 1, decoder: 1}
 
       alias Kdb.Batch
       alias Kdb.Cache
@@ -69,8 +73,8 @@ defmodule Kdb.Bucket do
       def decoder(x), do: @decoder.(x)
       def encoder(x), do: @encoder.(x)
 
-      def info(batch) do
-        Kdb.Stats.get(batch, @stats_size) || 0
+      def count_keys(batch) do
+        @stats.get(batch, @info_keys, 0)
       end
 
       if @has_index do
@@ -151,11 +155,10 @@ defmodule Kdb.Bucket do
       def put_new(batch, key, value) do
         case get(batch, key) do
           nil ->
-            # IO.inspect("Inserting #{key} in #{@bucket}")
             put(batch, key, value)
+            @stats.incr(batch, @info_keys, 1)
 
           _value ->
-            # IO.inspect("#{key} already exists in #{@bucket} bucket")
             false
         end
       end
@@ -167,14 +170,15 @@ defmodule Kdb.Bucket do
               },
               cache: cache
             } = batch,
-            key
+            key,
+            default \\ nil
           ) do
         case @cache.get(cache, bucket_name, key) do
           :delete ->
-            nil
+            default
 
           nil ->
-            get_from_disk(batch, handle, key)
+            get_from_disk(batch, handle, key, default)
 
           value ->
             value
@@ -208,7 +212,8 @@ defmodule Kdb.Bucket do
                cache: cache
              },
              handle,
-             key
+             key,
+             default \\ nil
            ) do
         case :rocksdb.get(db.store, handle, key, []) do
           {:ok, value} ->
@@ -218,7 +223,7 @@ defmodule Kdb.Bucket do
             result
 
           :not_found ->
-            nil
+            default
         end
       end
 
@@ -236,7 +241,7 @@ defmodule Kdb.Bucket do
           )
           when is_integer(amount) do
         raw_batch = store.batch
-        old_result = get(batch, key) || initial
+        old_result = get(batch, key, initial)
 
         # if initial == old_result do
         #   :rocksdb.batch_put(raw_batch, handle, key, @encoder.(initial))
@@ -325,6 +330,7 @@ defmodule Kdb.Bucket do
         @has_unique and delete_unique(batch, key)
         @has_secondary and delete_secondary(indexer, key)
         @cache.delete(cache, @bucket, key)
+        @has_stats and @stats.incr(batch, @info_keys, -1)
       end
 
       defp delete_unique(batch, key) do

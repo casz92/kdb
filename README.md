@@ -3,8 +3,7 @@
 ![Status](https://img.shields.io/badge/status-active-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
-This library integrates RocksDB as a persistent storage backend with ETS as an in-memory cache featuring configurable TTL (time-to-live) support. It is purpose-built for high-demand environments that require both rapid read performance and robust, fault-tolerant write operations.
-By leveraging ETS for ultra-low-latency access and utilizing RocksDB for durable, disk-based storage, the system achieves a finely balanced architecture that handles heavy write loads without compromising speed or data integrity.
+KDB is a real-time database that combines RocksDB as a persistent backend, ETS as an in-memory cache with TTL support, and SQLite for secondary indexing. It supports parallel writes for high-throughput ingestion, enabling fast reads, durable storage, and efficient lookups in demanding environments
 
 ## Key Features
 - Fast, TTL-enabled ETS layer for short-lived, memory-resident data.
@@ -12,13 +11,13 @@ By leveraging ETS for ultra-low-latency access and utilizing RocksDB for durable
 - Unified read/write interface with cache-first logic and optional async sync to disk.
 - Configurable batching and write coalescing for high-throughput pipelines.
 - Suitable for event processors, caching proxies, ephemeral data stores, and real-time systems under sustained load.
+- Support unique and secundary indexes with SQLite
 
 >Tested exclusively on Linux x86_64 systems (Ubuntu 22.04.3 LTS)
 
 > Note: This library is under active development and evolving rapidly, with the goal of reaching a stable release at version v0.2.0. Contributions, testing, and feedback are welcome as the project matures toward production readiness
 
 > ⚠️ **Build requirement**: Compiling RocksDB requires **CMake version 3.4 or higher**. Please ensure it is installed and available in your system path.
-
 
 ## Installation
 
@@ -40,7 +39,7 @@ end
 - [✅] Fetch & Access
 - [✅] Batching
 - [✅] TTL
-- [❌] Count keys
+- [✅] Count keys
 - [✅] Encoding/Decoding
 - [✅] Enumerable & Stream
 - [✅] Add and remove list items
@@ -56,6 +55,8 @@ end
 - [❌] Replication
 - [❌] Benchmarking
 - [❌] Documentation
+
+> Relevant: Key counting works only for put_new/3 and delete/2
 
 ## Usage
 ```elixir

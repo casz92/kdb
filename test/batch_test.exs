@@ -21,6 +21,11 @@ defmodule BatchTest do
     Bucket.put(batch, "mymap", %{a: 1, b: 2, c: 3})
     Bucket.delete(batch, "mymap")
 
+    DefaultBucket.put_new(batch, "a", %{a: 70, b: 30})
+    DefaultBucket.put_new(batch, "b", %{a: 30, b: 70})
+    DefaultBucket.put_new(batch, "c", %{a: 55, b: 45})
+    DefaultBucket.put_new(batch, "d", %{a: 20, b: 80})
+
     assert false == Bucket.has_key?(batch, "mymap")
     assert true == Bucket.has_key?(batch, "mykey")
     assert Bucket.get(batch, "mykey") == 10

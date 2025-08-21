@@ -8,7 +8,7 @@ defmodule Kdb.MixProject do
       app: :kdb,
       name: "Kdb",
       description:
-        "High-performance caching layer using ETS with TTL over RocksDB for persistent, write-intensive, low-latency applications",
+        "High performance realtime database combining ETS with TTL for caching, RocksDB for persistent parallel writes, and SQLite for secondary indexing and fast lookups",
       version: @version,
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,

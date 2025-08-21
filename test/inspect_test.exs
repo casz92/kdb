@@ -31,6 +31,12 @@ defmodule InspectTest do
     |> Enum.to_list()
     |> IO.inspect(label: "default bucket stream")
 
+    DefaultBucket.count_keys(batch) |> IO.inspect(label: "count keys default bucket")
+
+    Kdb.Bucket.Stream.keys(default, action: :prev, seek: :last)
+    |> Enum.to_list()
+    |> IO.inspect(label: "reverse keys default bucket")
+
     bi |> Enum.to_list() |> IO.inspect(label: "bucket2Index list")
 
     Bucket2.exists?(batch, :name, "John") |> IO.inspect(label: "get_unique name John")

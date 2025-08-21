@@ -45,4 +45,48 @@ defmodule Kdb.Bucket.Stream do
       end
     )
   end
+
+  def keys(%Kdb.Bucket{dbname: dbname, handle: handle}, opts \\ []) do
+    kdb = Kdb.get(dbname)
+    db = kdb.store
+    # seek: <<>> | <<0>> | :last
+    initial_seek = Keyword.get(opts, :seek, <<>>)
+    # action: :next | :prev
+    action = Keyword.get(opts, :action, :next)
+
+    Stream.resource(
+      # Start: open iterator and seek
+      fn ->
+        {:ok, iter} = :rocksdb.iterator(db, handle, [])
+
+        state =
+          case :rocksdb.iterator_move(iter, initial_seek) do
+            {:ok, key, _value} -> {:ok, iter, key}
+            _ -> {:done, iter}
+          end
+
+        state
+      end,
+
+      # Next: return {k, v} and move iterator
+      fn
+        {:done, iter} ->
+          {:halt, iter}
+
+        {:ok, iter, key} ->
+          next =
+            case :rocksdb.iterator_move(iter, action) do
+              {:ok, next_key, _next_val} -> {:ok, iter, next_key}
+              _ -> {:done, iter}
+            end
+
+          {[key], next}
+      end,
+
+      # After: close iterator
+      fn iter ->
+        :rocksdb.iterator_close(iter)
+      end
+    )
+  end
 end
