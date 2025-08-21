@@ -167,9 +167,10 @@ mix test test/tx_test.exs
 mix test test/incr_test.exs
 mix test test/index_test.exs
 mix test test/backup_test.exs
+mix test test/destroy_test.exs
 mix test test/restore_test.exs
 mix test test/inspect_test.exs
-mix test test/destroy_test.exs
+mix test test/clean_test.exs
 ```
 
 ## License
