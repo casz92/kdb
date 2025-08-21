@@ -25,6 +25,7 @@ defmodule Kdb.Bucket.Stream do
       # Next: return {k, v} and move iterator
       fn
         {:done, iter} ->
+          :rocksdb.iterator_close(iter)
           {:halt, iter}
 
         {:ok, iter, key, value} ->
@@ -40,8 +41,8 @@ defmodule Kdb.Bucket.Stream do
       end,
 
       # After: close iterator
-      fn iter ->
-        :rocksdb.iterator_close(iter)
+      fn _iter ->
+        :ok
       end
     )
   end
@@ -71,9 +72,12 @@ defmodule Kdb.Bucket.Stream do
       # Next: return {k, v} and move iterator
       fn
         {:done, iter} ->
+          :rocksdb.iterator_close(iter)
           {:halt, iter}
 
         {:ok, iter, key} ->
+          IO.puts("aqui paso")
+
           next =
             case :rocksdb.iterator_move(iter, action) do
               {:ok, next_key, _next_val} -> {:ok, iter, next_key}
@@ -84,8 +88,8 @@ defmodule Kdb.Bucket.Stream do
       end,
 
       # After: close iterator
-      fn iter ->
-        :rocksdb.iterator_close(iter)
+      fn _iter ->
+        :ok
       end
     )
   end

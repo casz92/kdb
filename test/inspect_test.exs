@@ -33,7 +33,8 @@ defmodule InspectTest do
 
     DefaultBucket.count_keys(batch) |> IO.inspect(label: "count keys default bucket")
 
-    Kdb.Bucket.Stream.keys(default, action: :prev, seek: :last)
+    default
+    |> Kdb.Bucket.Stream.keys(action: :prev, seek: :last)
     |> Enum.to_list()
     |> IO.inspect(label: "reverse keys default bucket")
 
