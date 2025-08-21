@@ -5,12 +5,12 @@ defmodule Bucket do
 end
 
 defmodule Bucket2Index do
-  use Kdb.Bucket, name: :bucket2index, ttl: 60_000
+  use Kdb.Bucket, name: :bucket2Index, ttl: 60_000
 end
 
 defmodule Bucket2 do
   use Kdb.Bucket,
-    name: Bucket2,
+    name: :bucket2,
     unique: [{:name, Bucket2Index}],
     secondary: [:age],
     ttl: 1_000

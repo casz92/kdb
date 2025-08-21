@@ -14,7 +14,7 @@ defmodule InspectTest do
     myb = Kdb.get_bucket(kdb, :bucket) |> put_batch(batch)
     myb2 = Kdb.get_bucket(kdb, :bucket2) |> put_batch(batch)
     default = Kdb.get_bucket(kdb, :default) |> put_batch(batch)
-    bi = Kdb.get_bucket(kdb, :bucket2index) |> put_batch(batch)
+    bi = Kdb.get_bucket(kdb, :bucket2Index) |> put_batch(batch)
 
     # inspect items
     myb
@@ -31,7 +31,7 @@ defmodule InspectTest do
     |> Enum.to_list()
     |> IO.inspect(label: "default bucket stream")
 
-    bi |> Enum.to_list() |> IO.inspect(label: "bucket2index list")
+    bi |> Enum.to_list() |> IO.inspect(label: "bucket2Index list")
 
     Bucket2.exists?(batch, :name, "John") |> IO.inspect(label: "get_unique name John")
 

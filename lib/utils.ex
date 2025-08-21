@@ -28,7 +28,7 @@ defmodule Kdb.Utils do
     |> to_string()
     |> String.split(".")
     |> List.last()
-    |> String.downcase()
+    # |> String.downcase()
     |> String.to_atom()
   end
 end
