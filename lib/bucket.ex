@@ -79,17 +79,17 @@ defmodule Kdb.Bucket do
       def decoder(x), do: @decoder.(x)
       def encoder(x), do: @encoder.(x)
 
-      def count_keys(batch) do
-        @stats.get(batch, @info_keys, 0)
-      end
-
-      def count_keys(batch, name) do
-        @stats.get(batch, "#{@bucket}:#{name}:keys", 0)
-      end
-
       if @has_stats do
+        def count_keys(batch) do
+          @stats.get(batch, @info_keys, 0)
+        end
+
+        def count_keys(batch, name) do
+          @stats.get(batch, "#{@bucket}:#{name}:keys", 0)
+        end
+
         if @has_prefixs do
-          def incr_count(batch, key, amount) do
+          defp incr_count(batch, key, amount) do
             for {prefix, regex} <- @prefixs do
               if Regex.match?(regex, key) do
                 @stats.incr(batch, prefix, amount)
@@ -99,12 +99,14 @@ defmodule Kdb.Bucket do
             @stats.incr(batch, @info_keys, amount)
           end
         else
-          def incr_count(batch, _key, amount) do
+          defp incr_count(batch, _key, amount) do
             @stats.incr(batch, @info_keys, amount)
           end
         end
       else
-        def incr_count(_batch, _keys, _amount), do: true
+        def count_keys(_batch), do: 0
+
+        defp incr_count(_batch, _keys, _amount), do: true
       end
 
       if @has_index do
@@ -476,7 +478,7 @@ defmodule Kdb.Bucket do
   Creates a new bucket module with the given name and options.
   The module will use `Kdb.Bucket` and the options provided.
   """
-  def make_bucket_module(mod_name, opts) when is_atom(mod_name) and is_list(opts) do
+  def make_bucket(mod_name, opts) when is_atom(mod_name) and is_list(opts) do
     quoted =
       quote do
         use Kdb.Bucket, unquote_splicing(opts)
@@ -484,6 +486,9 @@ defmodule Kdb.Bucket do
 
     Module.create(mod_name, quoted, Macro.Env.location(__ENV__))
   end
+
+  defdelegate stream(batch, opts), to: Kdb.Bucket.Stream
+  defdelegate keys(batch, opts), to: Kdb.Bucket.Stream
 end
 
 defimpl Inspect, for: Kdb.Bucket do
@@ -515,9 +520,9 @@ defimpl Enumerable, for: Kdb.Bucket do
 end
 
 defmodule DefaultBucket do
-  use Kdb.Bucket, name: :default
+  use Kdb.Bucket, name: :default, stats: false
 end
 
 defmodule Kdb.Stats do
-  use Kdb.Bucket, name: :stats
+  use Kdb.Bucket, name: :stats, stats: false
 end

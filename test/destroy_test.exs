@@ -9,10 +9,7 @@ defmodule DestroyTest do
     open()
   end
 
-  @backup_file "backup.zip"
   test "destroy", %{kdb: kdb, sup: sup} do
-    # destroy backup file also
-    File.exists?(@backup_file) and File.rm(@backup_file)
     # destroy database
     assert :ok = Kdb.destroy(kdb)
     assert :ok = Supervisor.stop(sup)

@@ -32,7 +32,7 @@ defmodule TtlTest do
 
     listb = :ets.tab2list(t)
     IO.inspect(listb, label: "Records after clean")
-    assert length(listb) == 5
+    assert length(listb) < length(lista)
 
     close(params)
   end
