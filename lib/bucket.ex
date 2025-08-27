@@ -18,8 +18,8 @@ defmodule Kdb.Bucket do
     secondary = Keyword.get(opts, :secondary, [])
     decoder = Keyword.get(opts, :decoder, &Kdb.Utils.binary_to_term/1)
     encoder = Keyword.get(opts, :encoder, &Kdb.Utils.term_to_binary/1)
-    stats = Keyword.get(opts, :stats, Kdb.Stats)
-    prefixs = Keyword.get(opts, :prefixs, [])
+    stats = Keyword.get(opts, :stats, Kdb.DefaultBucket)
+    match_count = Keyword.get(opts, :match_count, [])
 
     quote bind_quoted: [
             bucket: bucket,
@@ -30,7 +30,7 @@ defmodule Kdb.Bucket do
             decoder: decoder,
             encoder: encoder,
             stats: stats,
-            prefixs: prefixs
+            match_count: match_count
           ] do
       @bucket bucket |> Kdb.Utils.to_bucket_name()
       @cache cache
@@ -47,17 +47,20 @@ defmodule Kdb.Bucket do
       @stats stats
       @has_stats stats != false
       @info_keys "#{@bucket}:keys"
-      @has_prefixs length(prefixs) > 0
-      @prefixs Enum.map(prefixs, fn {name, regex} ->
-                 {"#{@bucket}:#{name}:keys", regex}
-               end)
+      @has_match_count length(match_count) > 0
+      @match_count Enum.map(match_count, fn {name, regex, fun} ->
+                     {"#{@bucket}:#{name}:keys", regex, fun}
+                   end)
 
       @compile {:inline, transform: 5, put_new: 3, get: 3, incr: 4, encoder: 1, decoder: 1}
+
+      @behaviour Kdb.Bucket
 
       alias Kdb.Batch
       alias Kdb.Cache
       alias Kdb.Indexer
 
+      @impl true
       def new(opts) do
         dbname = Keyword.fetch!(opts, :dbname)
         handle = Keyword.fetch!(opts, :handle)
@@ -73,13 +76,23 @@ defmodule Kdb.Bucket do
         }
       end
 
+      @impl true
       def name, do: @bucket
+
+      @impl true
       def ttl, do: @ttl
+
+      @impl true
       def indexes, do: (@unique |> Enum.map(fn {f, _mod} -> f end)) ++ @secondary
+
+      @impl true
       def decoder(x), do: @decoder.(x)
+
+      @impl true
       def encoder(x), do: @encoder.(x)
 
       if @has_stats do
+        @impl true
         def count_keys(batch) do
           @stats.get(batch, @info_keys, 0)
         end
@@ -88,13 +101,16 @@ defmodule Kdb.Bucket do
           @stats.get(batch, "#{@bucket}:#{name}:keys", 0)
         end
 
-        if @has_prefixs do
+        if @has_match_count do
           defp incr_count(batch, key, amount) do
-            for {prefix, regex} <- @prefixs do
-              if Regex.match?(regex, key) do
+            Enum.reduce_while(@match_count, :ok, fn {prefix, regex, fun}, acc ->
+              if fun.(key, regex) do
                 @stats.incr(batch, prefix, amount)
+                {:halt, acc}
+              else
+                {:cont, acc}
               end
-            end
+            end)
 
             @stats.incr(batch, @info_keys, amount)
           end
@@ -104,12 +120,14 @@ defmodule Kdb.Bucket do
           end
         end
       else
+        @impl true
         def count_keys(_batch), do: 0
 
         defp incr_count(_batch, _keys, _amount), do: true
       end
 
       if @has_index do
+        @impl true
         def put(
               batch = %Kdb.Batch{
                 db:
@@ -166,6 +184,7 @@ defmodule Kdb.Bucket do
           end)
         end
       else
+        @impl true
         def put(
               %Kdb.Batch{
                 db:
@@ -194,6 +213,7 @@ defmodule Kdb.Bucket do
         end
       end
 
+      @impl true
       def get(
             %Kdb.Batch{
               db: %Kdb{
@@ -216,6 +236,7 @@ defmodule Kdb.Bucket do
         end
       end
 
+      @impl true
       def has_key?(
             %Kdb.Batch{
               db: %Kdb{
@@ -258,6 +279,7 @@ defmodule Kdb.Bucket do
         end
       end
 
+      @impl true
       def incr(
             batch = %Kdb.Batch{
               db: %Kdb{
@@ -285,6 +307,7 @@ defmodule Kdb.Bucket do
         result
       end
 
+      @impl true
       def append(batch, key, new_item) do
         transform(
           batch,
@@ -298,6 +321,7 @@ defmodule Kdb.Bucket do
         )
       end
 
+      @impl true
       def remove(batch, key, items) when is_list(items) do
         transform(
           batch,
@@ -311,6 +335,7 @@ defmodule Kdb.Bucket do
         )
       end
 
+      @impl true
       def includes?(batch, key, item) do
         case get(batch, key) do
           nil -> false
@@ -346,6 +371,7 @@ defmodule Kdb.Bucket do
         @cache.update(cache, @bucket, key, new_value, new_value, @ttl)
       end
 
+      @impl true
       def delete(
             batch = %Kdb.Batch{
               db: %Kdb{
@@ -489,6 +515,23 @@ defmodule Kdb.Bucket do
 
   defdelegate stream(batch, opts), to: Kdb.Bucket.Stream
   defdelegate keys(batch, opts), to: Kdb.Bucket.Stream
+
+  @callback new(Keyword.t()) :: Kdb.Bucket.t()
+  @callback name() :: atom
+  @callback ttl() :: non_neg_integer
+  @callback indexes() :: list()
+  @callback decoder(binary()) :: term()
+  @callback encoder(term()) :: binary()
+  @callback has_key?(Kdb.Batch.t(), String.t()) :: boolean
+  @callback count_keys(Kdb.Batch.t()) :: non_neg_integer
+  @callback get(Kdb.Batch.t(), String.t(), any()) :: any()
+  @callback put(Kdb.Batch.t(), String.t(), term()) :: any()
+  @callback incr(Kdb.Batch.t(), String.t(), integer()) :: integer()
+  @callback append(Kdb.Batch.t(), String.t(), term()) :: any()
+  @callback remove(Kdb.Batch.t(), String.t(), term()) :: any()
+  @callback includes?(Kdb.Batch.t(), String.t(), term()) :: boolean
+  @callback delete(Kdb.Batch.t(), String.t()) :: any()
+  @optional_callbacks [append: 3, remove: 3, includes?: 3, has_key?: 2]
 end
 
 defimpl Inspect, for: Kdb.Bucket do
@@ -519,10 +562,6 @@ defimpl Enumerable, for: Kdb.Bucket do
   end
 end
 
-defmodule DefaultBucket do
+defmodule Kdb.DefaultBucket do
   use Kdb.Bucket, name: :default, stats: false
-end
-
-defmodule Kdb.Stats do
-  use Kdb.Bucket, name: :stats, stats: false
 end

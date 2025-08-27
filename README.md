@@ -84,7 +84,11 @@ defmodule Accounts do
   # Secondary indexes
   secondary: [:age],
   # count diferents keys with regex
-  prefixs: [{"admins", ~r/^admin_/}, {"users", ~r/^user_/}],
+  match_count: [
+    # name | patterm | custom function (name, patterm)
+    {"admins", "admin_", &String.starts_with?/2},
+    {"users", "user_", &String.starts_with?/2}
+  ],
   # TTL in cache (5 minutes)
   ttl: 30_000
 end

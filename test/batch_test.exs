@@ -5,6 +5,7 @@ defmodule BatchTest do
 
   import Kdb.Bucket, only: [put_batch: 2]
   import KdbTestUtils
+  alias Kdb.DefaultBucket
 
   setup_all do
     open()

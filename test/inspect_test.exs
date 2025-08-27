@@ -4,6 +4,8 @@ defmodule InspectTest do
   import KdbTestUtils
   import Kdb.Bucket, only: [put_batch: 2]
 
+  alias Kdb.DefaultBucket
+
   setup_all do
     open()
   end

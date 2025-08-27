@@ -13,8 +13,8 @@ defmodule Bucket2 do
     name: :bucket2,
     unique: [{:name, Bucket2Index}],
     secondary: [:age],
-    prefixs: [
-      {"accounts", ~r/^acc_/}
+    match_count: [
+      {"accounts", "acc_", &String.starts_with?/2}
     ],
     ttl: :infinity
 end
