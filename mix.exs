@@ -1,14 +1,14 @@
 defmodule Kdb.MixProject do
   use Mix.Project
 
-  @version "0.1.5"
+  @version "0.1.6"
 
   def project do
     [
       app: :kdb,
       name: "Kdb",
       description:
-        "High performance realtime database combining ETS with TTL for caching, RocksDB for persistent parallel writes, and SQLite for secondary indexing and fast lookups",
+        "High performance embedded realtime database combining ETS with TTL for caching, RocksDB for persistent parallel writes, and SQLite for secondary indexing and fast lookups",
       version: @version,
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,

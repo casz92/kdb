@@ -52,7 +52,8 @@ defmodule Kdb.Bucket do
                      {"#{@bucket}:#{name}:keys", regex, fun}
                    end)
 
-      @compile {:inline, transform: 5, put_new: 3, get: 3, incr: 4, encoder: 1, decoder: 1}
+      @compile {:inline,
+                transform: 5, put_new: 3, get: 3, incr: 4, incr_if: 6, encoder: 1, decoder: 1}
 
       @behaviour Kdb.Bucket
 
@@ -307,6 +308,40 @@ defmodule Kdb.Bucket do
         result
       end
 
+      @spec incr_if(
+              batch :: Kdb.Batch.t(),
+              key :: binary(),
+              amount :: integer(),
+              initial :: integer(),
+              threshold :: integer(),
+              comparator :: (integer(), integer() -> boolean())
+            ) :: integer() | {:error, integer()}
+      def incr_if(
+            batch = %Kdb.Batch{
+              db: %Kdb{
+                buckets: %{@bucket => %Kdb.Bucket{handle: handle}}
+              },
+              cache: cache,
+              store: store
+            },
+            key,
+            amount,
+            initial \\ 0,
+            threshold \\ 0,
+            comparator \\ &>=/2
+          )
+          when is_integer(amount) do
+        raw_batch = store.batch
+        old_result = get(batch, key, initial)
+
+        if comparator.(old_result, threshold) do
+          result = @cache.update_counter(cache, @bucket, key, amount, old_result, @ttl)
+          :rocksdb.batch_put(raw_batch, handle, key, @encoder.(result))
+        else
+          {:error, old_result}
+        end
+      end
+
       @impl true
       def append(batch, key, new_item) do
         transform(
@@ -461,6 +496,16 @@ defmodule Kdb.Bucket do
         remove(batch, key, items)
         batch
       end
+
+      defdelegate stream(batch, opts), to: Kdb.Bucket.Stream
+      defdelegate keys(batch, opts), to: Kdb.Bucket.Stream
+
+      defoverridable decoder: 1,
+                     encoder: 1,
+                     get: 3,
+                     put: 3,
+                     delete: 2,
+                     has_key?: 2
     end
   end
 
@@ -512,9 +557,6 @@ defmodule Kdb.Bucket do
 
     Module.create(mod_name, quoted, Macro.Env.location(__ENV__))
   end
-
-  defdelegate stream(batch, opts), to: Kdb.Bucket.Stream
-  defdelegate keys(batch, opts), to: Kdb.Bucket.Stream
 
   @callback new(Keyword.t()) :: Kdb.Bucket.t()
   @callback name() :: atom

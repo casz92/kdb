@@ -1,9 +1,9 @@
 # Kdb
-![Version](https://img.shields.io/badge/version-0.1.5-blue.svg)
+![Version](https://img.shields.io/badge/version-0.1.6-blue.svg)
 ![Status](https://img.shields.io/badge/status-active-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
-KDB is a real-time database that combines RocksDB as a persistent backend, ETS as an in-memory cache with TTL support, and SQLite for secondary indexing. It supports parallel writes for high-throughput ingestion, enabling fast reads, durable storage, and efficient lookups in demanding environments
+KDB is a embedded real-time database that combines RocksDB as a persistent backend, ETS as an in-memory cache with TTL support, and SQLite for secondary indexing. It supports parallel writes for high-throughput ingestion, enabling fast reads, durable storage, and efficient lookups in demanding environments
 
 ## Key Features
 - Fast, TTL-enabled ETS layer for short-lived, memory-resident data.
@@ -26,7 +26,7 @@ The package can be installed by adding `kdb` to your list of dependencies in `mi
 ```elixir
 def deps do
   [
-    {:kdb, "~> 0.1.5"}
+    {:kdb, "~> 0.1.6"}
   ]
 end
 ```
